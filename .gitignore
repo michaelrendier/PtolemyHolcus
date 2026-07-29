@@ -51,3 +51,8 @@ states/
 # OS
 .DS_Store
 Thumbs.db
+
+# Compiled binaries — build artifacts, rebuilt from source, never committed.
+PtolC/ptol
+ahura-mazda
+bumblebee

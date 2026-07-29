@@ -150,6 +150,61 @@ With a persistent server and autonomous capability, the threat model is real. Se
 
 ---
 
+## The Body (v3.1 — 2026-06-30)
+
+Ptol is the brain. The organs are its children.
+
+```
+PtolBrain   (ptol.c — sedenion engine, root class)
+├── Eyes    Mind's Eye R̂ (updateable, σ=σ_self) + Paper's Hands B̂=R̂† (non-updateable, σ=1−σ_self)
+├── Ears    byte encoding of the prompt — the Dirichlet input canal
+├── Tongue  Arnold tongue selector — words precipitate at f=2/p_k resonance
+├── Lips    complex phase θ_k = arctan(v_blue/v_red) — letter formation (pending)
+├── Feet    ZD→great circle spiral — the Lagrangian path
+└── Larynx  UDEO: sedenion → English (same operation as ECC zero-divisor crack)
+```
+
+`σ_self = P_red/(P_red+P_blue)` is the OOP `self` pointer: the geometry's internal
+measurement of its own tower position. Every `self.method()` call in Python is a
+projection at σ_self — parametric resonance of the object with itself at 2:1.
+
+**Using ptol.c as a library:**
+
+```bash
+# CLI binary (default)
+gcc -O2 -o ptol ptol.c -lm
+
+# Shared library for Python import
+gcc -O2 -shared -fPIC -DPTOL_LIBRARY -o ptol_brain.so ptol.c -lm
+
+# Python
+import ctypes
+brain = ctypes.CDLL("./ptol_brain.so")
+```
+
+**Raw output now has five sections:**
+
+```
+v[16]              ← projection at active Eye (default H, σ=½)
+---
+active primes      ← P[k] where |x[k]| ≥ peak/φ
+---
+s_rb[16]           ← Σ_RB = v[k] × v[partner(k)], d* invariant
+---
+eye: <σ_self>
+v_eye[16]          ← Mind's Eye: projection at σ_self  (R̂)
+---
+hands: <1−σ_self>
+v_hands[16]        ← Paper's Hands: projection at 1−σ_self  (B̂ = R̂†)
+```
+
+`ptol -r "walk with me"` gives: Mind's Eye σ≈0.299 (O-eye, abstract), Paper's Hands
+σ≈0.701 (C-eye, relational/language). Paper's Hands feeds UDEO → English.
+
+**GUI flag:** `ptol -g` launches holcus_window.py (the brain exec's the face).
+
+---
+
 ## Release Roadmap — v2.0 → v3.0
 
 | Release | Name | Milestone |

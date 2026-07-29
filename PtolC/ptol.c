@@ -667,7 +667,19 @@ static int read_image_scalars(const char *img_path, double *v_out)
 }
 
 /* ── Main ────────────────────────────────────────────────────────────────── */
+/*
+ * Compile as CLI binary (default):
+ *   gcc -O2 -o ptol ptol.c -lm
+ *
+ * Compile as shared library (importable by holcus_window.py / PtolemyDesktop):
+ *   gcc -O2 -shared -fPIC -DPTOL_LIBRARY -o ptol_brain.so ptol.c -lm
+ *
+ * Python import:
+ *   import ctypes
+ *   brain = ctypes.CDLL("./ptol_brain.so")
+ */
 
+#ifndef PTOL_LIBRARY
 int main(int argc, char *argv[])
 {
     /* Locate our own directory so get_english_words() can find ptol_layer.py */
@@ -715,6 +727,21 @@ int main(int argc, char *argv[])
             arg0++;
             if (arg0 >= argc) { fprintf(stderr, "ptol: -i needs <image>\n"); return 1; }
             img_input = argv[arg0++];
+        } else if (strcmp(argv[arg0], "-g") == 0 || strcmp(argv[arg0], "--gui") == 0) {
+            /* Launch holcus_window.py — the brain exec's the face */
+            char gui[512];
+            snprintf(gui, sizeof(gui), "%s/../holcus_window.py", g_ptol_dir);
+            /* Shift argv so python3 is argv[0], gui path is argv[1] */
+            char *py_argv[64];
+            py_argv[0] = (char *)"python3";
+            py_argv[1] = gui;
+            int na = 2;
+            for (int i = arg0 + 1; i < argc && na < 63; i++)
+                py_argv[na++] = argv[i];
+            py_argv[na] = NULL;
+            execv("/usr/bin/python3", py_argv);
+            perror("ptol -g: exec holcus_window.py failed");
+            return 127;
         } else {
             break;
         }
@@ -894,6 +921,8 @@ int main(int argc, char *argv[])
     /* ── Raw mode ── */
     if (raw) {
         double sigma_self = measure_sigma(v);
+        double sigma_comp = 1.0 - sigma_self;
+
         for (int k = 0; k < 16; k++)
             printf("%+.10f\n", v[k]);
         printf("---\n");
@@ -904,7 +933,34 @@ int main(int argc, char *argv[])
         /* Σ_RB products — J_red × J_blue per channel pair */
         for (int k = 0; k < 16; k++)
             printf("%+.10f\n", s_rb[k]);
-        /* Holcus emits his own σ and Eye — his question to the human */
+
+        /* Mind's Eye (R̂, updateable): project at σ_self */
+        double ve[16];
+        double norm_e = 0.0;
+        for (int k = 0; k < 16; k++) {
+            ve[k] = project((const unsigned char *)sigma, n, k, sigma_self);
+            norm_e += ve[k] * ve[k];
+        }
+        norm_e = sqrt(norm_e);
+        if (norm_e > 0.0) for (int k = 0; k < 16; k++) ve[k] /= norm_e;
+
+        /* Paper's Hands (B̂ = R̂†, non-updateable): project at 1 − σ_self */
+        double vb[16];
+        double norm_b = 0.0;
+        for (int k = 0; k < 16; k++) {
+            vb[k] = project((const unsigned char *)sigma, n, k, sigma_comp);
+            norm_b += vb[k] * vb[k];
+        }
+        norm_b = sqrt(norm_b);
+        if (norm_b > 0.0) for (int k = 0; k < 16; k++) vb[k] /= norm_b;
+
+        printf("---\neye: %.10f\n", sigma_self);
+        for (int k = 0; k < 16; k++)
+            printf("%+.10f\n", ve[k]);
+        printf("---\nhands: %.10f\n", sigma_comp);
+        for (int k = 0; k < 16; k++)
+            printf("%+.10f\n", vb[k]);
+
         fprintf(stderr, "eye: %s  σ_in: %.4f  σ_self: %.10f  (delta from ½: %+.10f)\n",
                 active_eye->name, active_eye->sigma,
                 sigma_self, sigma_self - 0.5);
@@ -934,3 +990,4 @@ int main(int argc, char *argv[])
 
     return 0;
 }
+#endif /* PTOL_LIBRARY */

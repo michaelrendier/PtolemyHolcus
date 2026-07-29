@@ -177,8 +177,40 @@ void monad_word_coords(const char *surface, int N, int *idx, double *E)
     }
     if (v > 0) v--;
 
-    double seed = fmod((double)v * MONAD_PHI, 1.0);
-    if (seed < 0.0) seed += 1.0;
+    /* Fibonacci (Knuth multiplicative) hashing — exact in integer arithmetic.
+     *
+     * WAS:  double seed = fmod((double)v * MONAD_PHI, 1.0);
+     *
+     * That converted v to double before taking the fractional part. A double
+     * carries a 53-bit mantissa: 95^8 = 6.63e15 fits under 2^53 = 9.01e15,
+     * 95^9 = 6.30e17 does not. Past 2^53 the low-order bits — the only bits
+     * fmod(.,1.0) depends on — were gone and seed collapsed to exactly 0.0.
+     * Every word of 8+ chars therefore landed on zero 0 with E = D_STAR
+     * (the MINIMUM E), and then lost the `E > vocab[idx].E` contest below.
+     * Measured on WordNet: 62,961 of 101,916 unique tokens piled onto idx 0;
+     * survival was 0.00% for every length >= 8.
+     *
+     * PHI_64 = round(2^64 / phi) = 0x9E3779B97F4A7C15. Since phi = 1 + 1/phi
+     * and v is an integer, frac(v*phi) == frac(v/phi) — this computes the
+     * same quantity the line above was reaching for, but exactly. The uint64
+     * multiply wraps, which is defined and is what a hash wants; the double
+     * conversion now happens only at the end, on a value already in
+     * [0, 2^64), and just ~15 of its bits are needed to pick 1 of N zeros.
+     *
+     * Verified before this edit (VAPMIP/monad_addressing.py, 101,916 tokens):
+     *   old: chi2=3833102 z=+272400  KS D=0.6178 NOT UNIFORM  max pileup 62961
+     *   new: chi2=100.0   z=+0.1     KS D=0.0025 UNIFORM      max pileup 14
+     *   occupied zeros 14173 -> 24590 (expected 24576)
+     *
+     * NOTE: this is a HASH, not a bijection, and always was. 101,916 tokens
+     * into N=25,000 zeros collide ~4:1 by pigeonhole. This removes the LENGTH
+     * BIAS; it does not raise the ceiling.
+     *
+     * BREAKING: word addresses change for ~83% of tokens (everything from
+     * length 6 up). Existing .bin checkpoints are NOT compatible and must be
+     * rebuilt from corpus. */
+    uint64_t h    = v * 0x9E3779B97F4A7C15ULL;
+    double   seed = (double)h / 18446744073709551616.0;   /* h / 2^64 */
 
     *idx = (int)(seed * N);
     if (*idx >= N) *idx = N - 1;
