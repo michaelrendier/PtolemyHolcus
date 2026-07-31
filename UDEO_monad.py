@@ -35,6 +35,27 @@ NOT a zero-divisor pair under ordinary cd_mul. That is the concrete,
 falsifiable form of "the J2 involution IS (I|O)" tested here — replacing
 v4's rejected block-swap entirely, not patching it.
 
+v6 addendum (2026-07-10): ran v5 as-is first (0/4 genuine (e,d) pairs behave
+as a zero-divisor pair under cd_mul_j2 — confirms the standing record, this
+mechanism is at chance). Then tested one new, directly-derived idea: rather
+than raw zero-divisor proximity, test the QUANTIZATION SIGNATURE of the
+directional-derivative structure around (e,d) under cd_mul_j2 at T_256 --
+motivated by an exact finding the same day (ValaQuenta/../udeo_crypto and
+VAPMIP/zd_approach_directions.py): known sedenion zero-divisor pairs show an
+exact, repeatable 4/244/8 split in the count of distinct directional-
+derivative magnitudes around them (very low entropy). Test: does a genuine
+(e,d) pair show a MORE quantized (fewer distinct magnitude values) structure
+than random (e,d') pairs, even though it is not itself a zero-divisor pair?
+
+Result: also at chance. Percentile ranks across the same 4 toy keys:
+80.0, 20.0, 40.0, 66.7 (mean ~51.7, chance=50) -- scattered with no
+consistent direction, nothing like a real signal. See
+j2_quantization_signature_test() below. This is the fourth independently
+constructed mechanism (after the 6 in ValaQuenta's udeo_crypto engine, plus
+v5's own cd_mul_j2 test) that finds nothing relating e and d beyond chance.
+Recorded here per the standing 'failed predictions stay in the record'
+policy -- not deleted, not reframed as a partial success.
+
 Author:  Cody Michael Allison <the.wandering.god@gmail.com>
 Built:   Claude Code (claude-sonnet-5)
 """
@@ -220,6 +241,97 @@ def rsa_validate_j2(n_random: int = 80, seed: int = 11) -> dict:
         results.append({'label': label, 'e': key['e'], 'd': key['d'],
                          'genuine': genuine, 'mean_random': mean_r,
                          'std_random': std_r, 'z': z, 'percentile': percentile})
+    return {'results': results}
+
+
+# ── v6: quantization-signature test (also at chance — see module docstring) ─
+
+def _cd_conj_batch(X):
+    c = X.copy()
+    c[1:, :] = -c[1:, :]
+    return c
+
+
+def _cd_mul_j2_batch(A, B):
+    """Batched cd_mul_j2 — builds a whole dim x dim operator in one recursive
+    tree walk instead of dim separate scalar calls. Same trick used in
+    ValaQuenta/modules/udeo_crypto/UDEO_RSA_DEMO.py's _cd_mul_batch, adapted
+    to the J2 (reverse) doubling rule."""
+    n = A.shape[0]
+    if n == 1:
+        return A[0:1, :] * B[0:1, :]
+    h = n // 2
+    A1, A2 = A[:h, :], A[h:, :]
+    B1, B2 = B[:h, :], B[h:, :]
+    C1 = _cd_mul_j2_batch(A1, B1) + _cd_mul_j2_batch(_cd_conj_batch(B2), A2)
+    C2 = _cd_mul_j2_batch(B2, A1) - _cd_mul_j2_batch(A2, _cd_conj_batch(B1))
+    return concatenate_rows(C1, C2)
+
+
+def concatenate_rows(a, b):
+    import numpy as np
+    return np.concatenate([a, b], axis=0)
+
+
+def quantization_signature(e_s: List[float], d_s: List[float], dim: int = DIM_T256) -> int:
+    """
+    Count of distinct directional-derivative magnitudes around the (e_s, d_s)
+    pair under cd_mul_j2 -- the same quantity that showed an exact, repeatable
+    4/244/8 split (only 3 distinct values) for known sedenion zero-divisor
+    pairs. Lower = more quantized/structured. Requires numpy.
+    """
+    import numpy as np
+    e_col = np.array(e_s).reshape(dim, 1)
+    d_col = np.array(d_s).reshape(dim, 1)
+    I = np.eye(dim)
+    Qw = _cd_mul_j2_batch(np.tile(e_col, (1, dim)), I)   # cd_mul_j2(e_s, e_j), per column j
+    Qv = _cd_mul_j2_batch(I, np.tile(d_col, (1, dim)))   # cd_mul_j2(e_i, d_s), per column i
+    mags = np.zeros((dim, dim))
+    for i in range(dim):
+        combo = Qw + Qv[:, i:i + 1]
+        mags[i, :] = np.linalg.norm(combo, axis=0)
+    return int(len(np.unique(np.round(mags, 3))))
+
+
+def j2_quantization_signature_test(n_controls: int = 15, seed: int = 11, dim: int = DIM_T256) -> dict:
+    """
+    Test: does the genuine (e,d) pair show a MORE quantized directional
+    structure (fewer distinct magnitude values) than random (e,d') pairs?
+    Result recorded 2026-07-10: at chance (percentiles 80.0, 20.0, 40.0,
+    66.7 across the 4 toy keys below, mean ~51.7). Kept as a runnable,
+    reproducible test, not just a claim in a docstring.
+    """
+    examples = [
+        (11, 13, 7,  'p=11, q=13'),
+        (11, 23, 7,  'p=11, q=23'),
+        (7,  11, 7,  'p=7,  q=11'),
+        (61, 53, 17, 'p=61, q=53 (textbook RSA)'),
+    ]
+    rng = random.Random(seed)
+    results = []
+    for p, q, e, label in examples:
+        key = rsa_keygen(p, q, e)
+        e_s = sedenion_of(str(key['e']), dim)
+        d_s = sedenion_of(str(key['d']), dim)
+        true_n = quantization_signature(e_s, d_s, dim)
+
+        control_ns = []
+        tries = 0
+        while len(control_ns) < n_controls and tries < n_controls * 10:
+            tries += 1
+            x = rng.randrange(2, key['phi_n'])
+            if math.gcd(x, key['phi_n']) != 1 or x == key['d']:
+                continue
+            dp_s = sedenion_of(str(x), dim)
+            control_ns.append(quantization_signature(e_s, dp_s, dim))
+
+        below = sum(1 for c in control_ns if true_n < c)
+        percentile = 100.0 * below / len(control_ns)
+        results.append({'label': label, 'e': key['e'], 'd': key['d'],
+                         'true_n_distinct': true_n,
+                         'control_mean': sum(control_ns) / len(control_ns),
+                         'control_range': (min(control_ns), max(control_ns)),
+                         'percentile': percentile})
     return {'results': results}
 
 

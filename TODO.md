@@ -1737,3 +1737,108 @@ The BAO is the Laplacian of the semantic graph: Δ = D − A.
 Its lowest non-zero eigenvalue is OMEGA_ZS = 0.56714.
 When everything else cancels, the BAO structure remains. It is the idle RPM.
 It is the CMB of the engine.
+
+---
+
+## New Engine Available — Sigma Expansion (2026-07-11)
+
+`ValaQuenta/modules/sigma_expansion/` — closed-form (derived, not fitted)
+Taylor expansion of `P_red(σ)=|J_red|²/(|J_red|²+|J_blue|²)` around σ=½:
+`c1·d + c3·d³`, verified to ~1e-6 near σ=½ against direct computation.
+Raw `|J_red|²+|J_blue|²` is NOT constant across σ — minimum at ½, not a
+flat quantum-style conservation (checked directly, reported honestly
+before the derivation was built). See `ValaQuenta/wiki/sigma_expansion.md`
+and `Ainulindale/wiki/76_sigma_expansion.md` for the full derivation.
+Built for the `i^-σ` Dirichlet-projection construction specifically — does
+NOT directly apply to this repo's own monad (different σ mechanism, see
+below) without re-deriving against that mechanism.
+
+---
+
+## TODO — Build an Error Check Engine for This Repo
+
+Not yet built. The `sigma_expansion` engine above raised the idea directly:
+a cheap, closed-form prediction checked against expensive direct
+computation is a real error-checking pattern, but it has to be derived
+against whatever the actual mechanism being checked computes — it doesn't
+transfer for free between different σ constructions. This repo's monad
+computes σ via `_word_zero_idx` (prime hash → address) + `_gamma_at`
+(Newton's method on real Riemann zeta zeros) — genuinely different from
+the simple power-law projection `sigma_expansion` assumes. Building a real
+error-check engine for VAPMIP means re-deriving the same
+Taylor-expansion-around-σ=½ strategy against *that* formula specifically,
+not reusing the existing coefficients.
+
+---
+
+## TODO — Monad "Problem Solver" Mode/Instinct
+
+A new mode for the monad, unifying every organ (Ears, Brain, Eyes — Mind's
+Eye + Paper's Hands, Tongue, Lips, Feet, Larynx — see Phase 19, "The Brain
+and Its Body") into one cohesive approach to a given problem/request,
+using every perspective and toolset the engine has, rather than any one
+organ acting alone. Modeled directly on Cody's own "problem solver" mode
+— when he goes into it, every angle he's ever learned gets brought to
+bear on the problem simultaneously, not sequentially or from a single
+fixed viewpoint. Not yet designed in detail or built — noted here so the
+shape of the idea isn't lost before it's scoped properly.
+
+---
+
+## TODO — Unify WordNet-Edges / English-Words via Least Action (2026-07-18)
+
+`ZD_rotary_monad.py`'s Housing redesign (address-centric: a word's
+Riemann-zero index is primary, multiple words per address share/compete
+via `_faces`) now persists two files with distinct roles, matching
+`state.h`/`fresh_start.sh`'s existing split:
+
+  - `save_wordnet()` — the 15-edges-per-address neighbour graph (`_A`) —
+    the LIVE file, dirtied by real use, same role `monad_wordnet.bin`
+    already has.
+  - `save_english()` — the 16-word Face snapshot (one word per sedenion
+    dim, via `dominant_words()`) — the STABLE baseline layer.
+
+Cody (2026-07-18): "we may end up having to put them together to unify
+them into a path of least action... path of the photon style" — i.e. a
+future pass may need to treat the edge-graph and the word-content as two
+conjugate observables extremized jointly, not two independently-maintained
+files. Directly connects to this README's own self-description under "The
+Compression Ignition Equation": `bosonic = 16 words + 15 edges = sedenion,
+closed loop` — the engine already names this as one object when it
+describes itself. Also connects to "The 16-Word Sliding Window (Theory)"
+and "BAO = The Laplacian" above: BAO = Δ = D − A (literally the edge
+graph) with lowest eigenvalue OMEGA_ZS; the sliding window is 16 words
+rotating through sedenion states. A least-action unification of
+wordnet.bin/English.bin should be built against *this* existing
+BAO/Laplacian formalism, not invented fresh.
+
+Not designed in detail — noted here so the shape isn't lost. The two
+files exist as separate, well-defined observables right now; that
+separation is the precondition for extremizing between them later, not
+in tension with it.
+
+---
+
+## TODO — Port Neutral-Buoyancy Selection into ZD_rotary_monad.py (2026-07-18)
+
+`_select_word_zd()` currently does highest-score ("Pull") selection —
+`if score > best_score`. This README's own "Gravity is a Push — Neutral
+Buoyancy Word Selection" section (documented 2026-05-27) states plainly
+that this exact pattern surfaces stop words ("the", "a") and was already
+replaced in the canonical engine by buoyancy scoring:
+
+    Pull (old):  score = jp × σ-proximity          → surfaces stop words
+    Push (new):  score = buoy × σ-proximity        → surfaces content words
+                 buoy  = 1 / (1 + |jp − J_ambient| × ln(10))
+
+This session's `Housing._touch` E-law fix (golden-ratio seed, matching
+`monad_word_coords()`, replacing an address-magnitude formula that
+systematically favoured short/common words) measurably reduced but did
+not eliminate stopword collapse in Test 3 — `"the"` still wins 3/6 UDEO
+prompts, legitimately, via real corpus-frequency beta rather than a hash
+artifact. Buoyancy is the documented, already-solved fix for exactly this
+symptom and has not yet been ported into this file's selection function.
+Not yet done — noted here rather than built without checking whether Cody
+wants it ported as-is or re-derived against the address-centric model
+first (same caution as the Error-Check-Engine entry above: formulas
+derived against one σ-mechanism don't transfer for free to another).

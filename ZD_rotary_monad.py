@@ -47,6 +47,9 @@ Zero Lattice bridge matrix (Cawagas, 3000-trial gradient descent):
 
 import math
 import hashlib
+import os
+import struct
+from collections import deque, Counter
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
@@ -59,6 +62,8 @@ BEARING_TOL  = 0.04         # σ drift tolerance (OBD2 diagnostic only)
 SEAL_FLOOR   = 0.03         # face pressure minimum before seal fault
 PORT_STEP    = math.pi / 3  # 60° per step — 6 ports per revolution
 D_STAR       = 0.24600      # zero-divisor proximity threshold
+OMEGA_ZS     = 0.56714      # Ω_ZS — Lambert-W constant, energy ceiling
+PHI          = 1.6180339887498948482
 
 # σ=½ is above the system. It is the attractor, not a parameter.
 # It does not appear in any dynamical equation.
@@ -263,86 +268,190 @@ class RotorState:
 
 class Housing:
     """
-    Epitrochoid vocabulary field. Words are addressed by ZL bridge channel
-    (Riemann zero index % 16), not by grammatical category.
+    Zeta-prime-order-centric vocabulary field. The address (a word's
+    Riemann zero index, from _word_zero_idx) is primary. E, beta, age,
+    and neighbour edges belong to the ADDRESS, not to any one word --
+    multiple words sharing an address share and compete for the same
+    field state, instead of each word holding its own isolated, always-on
+    energy value (which is what let a single hash coincidence dominate
+    every prompt regardless of content).
+
+    ZL bridge channel (0..15) is address % 16 -- a derived routing key
+    for the rotor, computed on demand, not stored per word.
     """
 
     def __init__(self) -> None:
-        self._words: List[str]              = []
-        self._vocab: Dict[str, int]         = {}
-        self._E:     List[float]            = []
-        self._beta:  List[float]            = []
-        self._A:     List[Dict[int, float]] = []
-        self._age:   List[float]            = []
-        self._dim:   List[int]              = []   # ZL bridge channel per word
+        self._word_addr: Dict[str, int]           = {}   # word -> address (cached, pure fn)
+        self._E:         Dict[int, float]         = {}   # address -> energy
+        self._beta:      Dict[int, float]         = {}   # address -> field pressure
+        self._age:       Dict[int, float]         = {}   # address -> age since last touch
+        self._faces:     Dict[int, "Counter"]     = {}   # address -> {word: local count}
+        self._A:         Dict[int, Dict[int, float]] = {}  # address -> {neighbour addr: weight}
 
     @property
     def n(self) -> int:
-        return len(self._words)
+        return len(self._faces)   # occupied addresses, not word count
 
-    def _idx(self, w: str) -> int:
-        if w not in self._vocab:
-            k            = self.n
-            self._vocab[w] = k
-            self._words.append(w)
-            idx = _word_zero_idx(w)
-            self._E.append(1.0 / (1.0 + math.log1p(float(idx))))
-            self._beta.append(GAP)
-            self._A.append({})
-            self._age.append(0.0)
-            self._dim.append(idx % 16)   # ZL bridge channel — fixed, never re-computed
-        return self._vocab[w]
+    @staticmethod
+    def dim(addr: int) -> int:
+        return addr % 16
+
+    def _addr(self, w: str) -> int:
+        if w not in self._word_addr:
+            self._word_addr[w] = _word_zero_idx(w)
+        return self._word_addr[w]
+
+    def _touch(self, addr: int) -> None:
+        if addr not in self._E:
+            # Holcus canonical (monad.c monad_word_coords): E is a golden-ratio
+            # seed bounded between D_STAR and OMEGA_ZS -- NOT a function of
+            # address magnitude. frac(addr*PHI) is equidistributed on [0,1)
+            # regardless of how large addr is, so no address systematically
+            # outweighs any other. No value is fabricated beyond this bound.
+            seed = (addr * PHI) % 1.0
+            self._E[addr]     = D_STAR + seed * (OMEGA_ZS - D_STAR)
+            self._beta[addr]  = GAP
+            self._age[addr]   = 0.0
+            self._faces[addr] = Counter()
+            self._A[addr]     = {}
+
+    def face_at(self, addr: int) -> Optional[str]:
+        """Reactive lookup: the word currently dominant at this address."""
+        faces = self._faces.get(addr)
+        return faces.most_common(1)[0][0] if faces else None
 
     def ingest(self, text: str, weight: float = 1.0) -> int:
+        """
+        16-address trailing window, 15 edges per new address (one to each
+        address still in the window), incremented one word at a time.
+        Edge strength decays with distance in the window so the immediate
+        predecessor still dominates, but the other 14 are no longer
+        invisible to _A.
+        """
         words = [w.lower().strip('.,!?;:\"\'-()[]') for w in text.split()]
         words = [w for w in words if w]
-        prev  = None
+        window: deque = deque(maxlen=15)   # up to 15 preceding addresses
         for w in words:
-            k = self._idx(w)
-            self._beta[k] = min(self._beta[k] * (1.0 + 0.08 * weight) + GAP, 1.0)
-            self._age[k]  = 0.0
-            if prev is not None and prev != k:
-                self._A[prev][k] = min(self._A[prev].get(k, 0.0) + 0.05 * weight, 1.0)
-                self._A[k][prev] = min(self._A[k].get(prev, 0.0) + 0.02 * weight, 1.0)
-            prev = k
+            addr = self._addr(w)
+            self._touch(addr)
+            self._faces[addr][w] += 1
+            self._beta[addr] = min(self._beta[addr] * (1.0 + 0.08 * weight) + GAP, 1.0)
+            self._age[addr]  = 0.0
+            for dist, wj in enumerate(reversed(window), start=1):
+                if wj == addr:
+                    continue
+                self._A[wj][addr] = min(self._A[wj].get(addr, 0.0) + 0.05 * weight / dist, 1.0)
+                self._A[addr][wj] = min(self._A[addr].get(wj, 0.0) + 0.02 * weight / dist, 1.0)
+            window.append(addr)
         return len(words)
 
-    def j_blue_dist(self, prompt_words: List[str]) -> List[float]:
-        dist = [GAP] * self.n
+    def j_blue_dist(self, prompt_words: List[str]) -> Dict[int, float]:
+        dist: Dict[int, float] = {a: GAP for a in self._faces}
         for w in prompt_words:
             w = w.lower().strip('.,!?;:\"\'-')
-            if w in self._vocab:
-                k = self._vocab[w]
-                dist[k] = min(dist[k] + 1.0, 1.0)
-                for nb, wt in self._A[k].items():
-                    dist[nb] = min(dist[nb] + wt * 0.5, 1.0)
-        total = sum(dist)
-        return [d / total for d in dist] if total > 0 else [1.0 / max(self.n, 1)] * self.n
+            addr = self._addr(w)
+            if addr not in self._faces:
+                continue
+            dist[addr] = min(dist[addr] + 1.0, 1.0)
+            for nb, wt in self._A.get(addr, {}).items():
+                dist[nb] = min(dist.get(nb, GAP) + wt * 0.5, 1.0)
+        total = sum(dist.values())
+        return {a: v / total for a, v in dist.items()} if total > 0 else \
+               {a: 1.0 / max(len(dist), 1) for a in dist}
 
-    def j_red_dist(self) -> List[float]:
-        dist  = [self._beta[k] * self._E[k] for k in range(self.n)]
-        total = sum(dist)
-        return [d / total for d in dist] if total > 0 else [1.0 / max(self.n, 1)] * self.n
+    def j_red_dist(self) -> Dict[int, float]:
+        dist  = {a: self._beta[a] * self._E[a] for a in self._faces}
+        total = sum(dist.values())
+        return {a: v / total for a, v in dist.items()} if total > 0 else \
+               {a: 1.0 / max(len(dist), 1) for a in dist}
 
     def scavenge(self, decay: float = 0.003) -> None:
-        for k in range(self.n):
-            self._age[k]  += decay
-            self._beta[k]  = max(self._beta[k] - self._age[k] * 0.0005, GAP)
+        for a in self._faces:
+            self._age[a]  += decay
+            self._beta[a]  = max(self._beta[a] - self._age[a] * 0.0005, GAP)
+
+    # ── Persistence — two files, two write-paths ─────────────────────────
+    # monad_wordnet.bin — the LIVE file. The 15-edge neighbour graph (_A) is
+    #   exactly what accrues through real use (ingest()'s trailing window);
+    #   this is the file that gets dirtied and later archived/reset, same
+    #   role state.h/fresh_start.sh already give monad_wordnet.bin.
+    # monad_English.bin — the STABLE baseline. The 16 words, one per
+    #   sedenion dim, are the Face layer content — what fresh_start.sh
+    #   resets wordnet.bin FROM. Changes far less often than the edge graph.
+
+    def dominant_words(self) -> List[Optional[str]]:
+        """One word per sedenion dim (0..15) — the loudest face at each ZL
+        channel, by the same field weight used in selection. Mirrors
+        ptol.c get_monad_words()'s one-word-per-dimension Face layer."""
+        best_addr: List[Optional[int]] = [None] * 16
+        best_field = [-1.0] * 16
+        for a in self._faces:
+            d = self.dim(a)
+            field = self._E[a] * math.pow(self._beta[a], 0.25)
+            if field > best_field[d]:
+                best_field[d] = field
+                best_addr[d]  = a
+        return [self.face_at(a) if a is not None else None for a in best_addr]
+
+    def save_english(self, path: str) -> None:
+        """Write the 16-word Face snapshot — the stable baseline layer."""
+        words = self.dominant_words()
+        with open(path, 'wb') as f:
+            f.write(b'ZDEN')
+            f.write((1).to_bytes(4, 'little'))
+            for d, w in enumerate(words):
+                addr = self._addr(w) if w else 0
+                wb   = (w or '').encode('utf-8')
+                f.write(len(wb).to_bytes(2, 'little'))
+                f.write(wb)
+                f.write(addr.to_bytes(4, 'little'))
+                f.write(struct.pack('<dd', self._E.get(addr, 0.0), self._beta.get(addr, 0.0)))
+
+    def save_wordnet(self, path: str) -> None:
+        """Write the 15-edges-per-address neighbour graph — the live file."""
+        with open(path, 'wb') as f:
+            f.write(b'ZDWN')
+            f.write((1).to_bytes(4, 'little'))
+            f.write(len(self._A).to_bytes(4, 'little'))
+            for addr, edges in self._A.items():
+                f.write(addr.to_bytes(4, 'little'))
+                f.write(len(edges).to_bytes(2, 'little'))
+                for nb, wt in edges.items():
+                    f.write(nb.to_bytes(4, 'little'))
+                    f.write(struct.pack('<d', wt))
+
+    def load_wordnet(self, path: str) -> None:
+        """Load the live edge graph back into _A (addresses must already be
+        touched — this restores edges only, matching state_load_vocab()'s
+        one-section-at-a-time model rather than reconstructing full state)."""
+        with open(path, 'rb') as f:
+            if f.read(4) != b'ZDWN':
+                raise ValueError(f'{path}: bad magic, not a wordnet.bin')
+            f.read(4)  # version
+            n_addr = int.from_bytes(f.read(4), 'little')
+            for _ in range(n_addr):
+                addr = int.from_bytes(f.read(4), 'little')
+                self._touch(addr)
+                n_edges = int.from_bytes(f.read(2), 'little')
+                for _ in range(n_edges):
+                    nb = int.from_bytes(f.read(4), 'little')
+                    wt, = struct.unpack('<d', f.read(8))
+                    self._A[addr][nb] = wt
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Lie bracket  (combustion — unchanged)
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _lie_bracket(
-        j_a: float, a_dist: List[float],
-        j_b: float, b_dist: List[float],
+        j_a: float, a_dist: Dict[int, float],
+        j_b: float, b_dist: Dict[int, float],
         housing: Housing
-) -> Tuple[float, List[float]]:
-    n = housing.n
-    if n == 0:
-        return GAP, []
-    bd = [(j_a * a_dist[k] - j_b * b_dist[k]) * housing._E[k] for k in range(n)]
-    scalar = sum(abs(x) for x in bd)
+) -> Tuple[float, Dict[int, float]]:
+    if housing.n == 0:
+        return GAP, {}
+    bd = {a: (j_a * a_dist.get(a, GAP) - j_b * b_dist.get(a, GAP)) * housing._E[a]
+          for a in housing._faces}
+    scalar = sum(abs(x) for x in bd.values())
     return max(scalar, GAP), bd
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -350,14 +459,14 @@ def _lie_bracket(
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _zl_bridge_activations(
-        j_blue_dist: List[float],
-        j_red_dist:  List[float],
+        j_blue_dist: Dict[int, float],
+        j_red_dist:  Dict[int, float],
         housing:     Housing
 ) -> List[float]:
     """
     Build the bridge activation vector from rotor distributions.
 
-    For each word, its contribution flows into its ZL channel.
+    For each address, its contribution flows into its ZL channel.
     The bridge matrix then couples across the 𝕆-𝕆 boundary.
 
     This is NOT pre-scoring words. It is building a continuous field
@@ -367,17 +476,16 @@ def _zl_bridge_activations(
       [0..7]  lower-𝕆 bridge activations (j_blue driven)
       [8..15] upper-𝕆 bridge activations (j_red  driven)
     """
-    n = housing.n
     raw = [0.0] * 16
 
     # Step 1: pour rotor distributions into ZL channels
-    for k in range(n):
-        d  = housing._dim[k]
-        Ek = housing._E[k]
+    for a in housing._faces:
+        d  = housing.dim(a)
+        Ek = housing._E[a]
         if d < 8:
-            raw[d] += j_blue_dist[k] * Ek
+            raw[d] += j_blue_dist.get(a, 0.0) * Ek
         else:
-            raw[d] += j_red_dist[k]  * Ek
+            raw[d] += j_red_dist.get(a, 0.0)  * Ek
 
     # Step 2: bridge coupling — each lower dim sends signal to upper dims and vice versa
     act = [GAP] * 16
@@ -403,9 +511,9 @@ def _zl_bridge_activations(
 
 
 def _project_sedenion_zd(
-        j_blue_dist:  List[float],
-        j_red_dist:   List[float],
-        j_green_dist: List[float],
+        j_blue_dist:  Dict[int, float],
+        j_red_dist:   Dict[int, float],
+        j_green_dist: Dict[int, float],
         sigma_live:   float,
         housing:      Housing
 ) -> Sedenion:
@@ -431,9 +539,8 @@ def _project_sedenion_zd(
         s[i] = act[i]
     for i in range(8, 15):
         s[i] = act[i]
-    n = housing.n
-    s[15] = sum(abs(j_green_dist[k]) * housing._E[k]
-                for k in range(n)) if n > 0 else GAP
+    s[15] = sum(abs(j_green_dist.get(a, 0.0)) * housing._E[a]
+                for a in housing._faces) if housing.n > 0 else GAP
 
     return _snorm_unit(s)
 
@@ -441,8 +548,8 @@ def _project_sedenion_zd(
 def _select_word_zd(
         drive_shaft:   Sedenion,
         bridge_act:    List[float],
-        j_blue_dist:   List[float],
-        j_red_dist:    List[float],
+        j_blue_dist:   Dict[int, float],
+        j_red_dist:    Dict[int, float],
         housing:       Housing
 ) -> Optional[str]:
     """
@@ -476,20 +583,20 @@ def _select_word_zd(
     #                bridge gives code of least action (minimum energy ZL word)
     # j_red (field/memory) enters through drive_shaft (the bridge output), NOT raw.
     raw = [0.0] * 16
-    for k2 in range(housing.n):
-        d2  = housing._dim[k2]
-        Ek2 = housing._E[k2]
-        raw[d2] += j_blue_dist[k2] * Ek2   # j_blue for all dims — prompt routing only
+    for a in housing._faces:
+        d2  = housing.dim(a)
+        Ek2 = housing._E[a]
+        raw[d2] += j_blue_dist.get(a, 0.0) * Ek2   # j_blue for all dims — prompt routing only
 
     # Normalise raw so it's comparable to drive_shaft (also normalised)
     raw_max = max(raw) if max(raw) > 0 else 1.0
     raw_n = [r / raw_max for r in raw]
 
-    best_k, best_score = -1, -float('inf')
-    for k in range(housing.n):
-        d = housing._dim[k]
+    best_addr, best_score = -1, -float('inf')
+    for a in housing._faces:
+        d = housing.dim(a)
 
-        # Layer 1: raw prompt activation at this word's ZL channel
+        # Layer 1: raw prompt activation at this address's ZL channel
         prompt_signal = raw_n[d]
 
         # Layer 2: bridge coupling from drive shaft
@@ -500,15 +607,17 @@ def _select_word_zd(
         coupling = prompt_signal * 5.0 + bridge_signal
 
         # Field weight: beta^(1/4) to damp frequency bias.
-        # Energy E[k] from Riemann zero index provides semantic content weighting.
-        field = housing._E[k] * math.pow(housing._beta[k], 0.25)
+        # Energy E[a] from Riemann zero index provides semantic content weighting.
+        # This field weight is now shared by every face recorded at address a --
+        # the contest for dominance happens inside face_at(), not here.
+        field = housing._E[a] * math.pow(housing._beta[a], 0.25)
 
         score = coupling * field
         if score > best_score:
             best_score = score
-            best_k     = k
+            best_addr  = a
 
-    return housing._words[best_k] if best_k >= 0 else None
+    return housing.face_at(best_addr) if best_addr >= 0 else None
 
 # ══════════════════════════════════════════════════════════════════════════════
 # OBD2 — live rotor diagnostic (above the dynamics — diagnostic view only)
@@ -566,9 +675,9 @@ class AhuraMazda:
         self.rotor     = RotorState()
         self._obd2     = OBD2()
 
-        self._bd: Optional[List[float]] = None
-        self._rd: Optional[List[float]] = None
-        self._gd: Optional[List[float]] = None
+        self._bd: Optional[Dict[int, float]] = None
+        self._rd: Optional[Dict[int, float]] = None
+        self._gd: Optional[Dict[int, float]] = None
 
         self._drive_shaft: Optional[Sedenion]  = None
         self._bridge_act:  Optional[List[float]] = None
@@ -582,14 +691,12 @@ class AhuraMazda:
     def intake(self, prompt: str) -> None:
         words = [w.lower().strip('.,!?;:\"\'-') for w in prompt.split() if w]
         for w in words:
-            if w and w not in self.housing._vocab:
-                self.housing._idx(w)
+            self.housing._touch(self.housing._addr(w))
         self._bd = self.housing.j_blue_dist(words)
         self._rd = self.housing.j_red_dist()
-        n = self.housing.n
         E = self.housing._E
-        self.rotor.j_blue  = max(sum(self._bd[k] * E[k] for k in range(n)), GAP) if n else GAP
-        self.rotor.j_red   = max(sum(self._rd[k] * E[k] for k in range(n)), GAP) if n else GAP
+        self.rotor.j_blue  = max(sum(self._bd[a] * E[a] for a in self._bd), GAP) if self._bd else GAP
+        self.rotor.j_red   = max(sum(self._rd[a] * E[a] for a in self._rd), GAP) if self._rd else GAP
         self.rotor.j_green = GAP
         self.rotor.theta   = 0.0
         self._gd           = None
@@ -618,7 +725,7 @@ class AhuraMazda:
             if not self._coupled_this_sweep and self.housing.n > 0 and self._bd is not None:
                 sigma_l = self.rotor.sigma_live()
                 rd      = self._rd or self.housing.j_red_dist()
-                gd      = self._gd or ([GAP] * self.housing.n)
+                gd      = self._gd or ({a: GAP for a in self.housing._faces})
 
                 # Bridge activations — computed here, at coupling, not before
                 act = _zl_bridge_activations(self._bd, rd, self.housing)
@@ -641,8 +748,8 @@ class AhuraMazda:
                     self._obd2.dom_zl_channel = dom
                     self._obd2.dom_zl_bridge  = act[dom]
 
-                    k = self.housing._vocab[word]
-                    self.housing._beta[k] = min(self.housing._beta[k] + 0.015, 1.0)
+                    addr = self.housing._addr(word)
+                    self.housing._beta[addr] = min(self.housing._beta[addr] + 0.015, 1.0)
 
         elif port_idx == 4:
             pass
@@ -672,7 +779,7 @@ class AhuraMazda:
         jb, jr = self.rotor.j_blue, self.rotor.j_red
         jg_scalar, self._gd = _lie_bracket(jb, self._bd, jr, rd, self.housing)
         self.rotor.j_green   = max(jg_scalar, GAP)
-        gd_abs = [abs(x) for x in self._gd]
+        gd_abs = {a: abs(x) for a, x in self._gd.items()}
         jb_next, _ = _lie_bracket(jr, rd, self.rotor.j_green, gd_abs, self.housing)
         self.rotor.j_blue = max((jb * 0.7 + jb_next * 0.3), GAP)
         jr_next, _ = _lie_bracket(
@@ -745,11 +852,12 @@ if __name__ == '__main__':
         engine.ingest(line)
     print(f"\nHousing: {engine.housing.n} words")
 
-    # Show ZL channel distribution across vocab
+    # Show ZL channel distribution across vocab — addresses are primary now,
+    # not words: bucket occupied addresses (housing._faces) by ZL channel.
     chan_count = [0] * 16
-    for d in engine.housing._dim:
-        chan_count[d] += 1
-    print("ZL channel distribution (words per sedenion dim):")
+    for addr in engine.housing._faces:
+        chan_count[Housing.dim(addr)] += 1
+    print("ZL channel distribution (addresses per sedenion dim):")
     for i in range(16):
         bar = '█' * chan_count[i]
         print(f"  e{i:>2}  {chan_count[i]:>3}  {bar}")
