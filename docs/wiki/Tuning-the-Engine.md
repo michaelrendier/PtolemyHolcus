@@ -4858,4 +4858,50 @@ in the `~/.clauderc_ValaQuenta` header.
 | 2026-08-04 | **FULL ENGINE PROTOCOL now FIVE parts** — added the `.clauderc_ValaQuenta` entry requirement |
 | 2026-08-04 | OPEN, one named thing: the dispersion relation ω(k) on the ZD surface. Fixes the contour, prices the loop. Phase 25 |
 
+### Addendum — the ψ collision resolved (same day)
+
+Cody asked whether the two ψ are the same symbol in practice or need
+itemising separately. **Both halves are true, and the second half is the
+useful one.**
+
+They are different objects and must stay itemised: ψ_Cheb is a monotone step
+function on ℝ⁺, one integration above the discrete measure Λ(n); ψ_Fermat is
+a smooth 2D field, two integrations above a continuous κ. You cannot
+Poisson-solve a staircase.
+
+But lining the two equations up shows they are **one slot apart**:
+
+```
+lensing:   L_(I|O)  =  L   −  ψ_Fermat
+primes:    ψ_Cheb   =  x   −  Σ_ρ x^ρ/ρ    (− ln2π − ½ln(1−x⁻²))
+
+    ψ_Cheb      ↔  L_(I|O)     the actual, bent path
+    x           ↔  L           the clean geodesic
+    Σ_ρ x^ρ/ρ   ↔  ψ_Fermat    the potential — the bend
+```
+
+**Chebyshev ψ is the counterpart of L_(I|O), not of the Fermat potential.**
+The counterpart of ψ_Fermat is the **zero sum**, which had no name in any
+repo until today — it existed only inline inside `chebyshev_psi_explicit`,
+which is exactly why the collision read as a naming accident. It is now
+`zero_sum()`.
+
+Two things fall out. The main term x **is** L — "the path of least primes",
+the phrase the 2026-07-31 primer carries without a formula, now
+`clean_path_L()`. And the prime side already **had** an L_(I|O) and was
+calling it ψ: de-lensing here means recovering the source from the bent path,
+and the source is Λ, the primes themselves. That is the **fourth column** of
+the primer's §4 dictionary, added at source.
+
+`chebyshev_psi_*` keeps its name — standard and expected. What changed is
+that the object it was hiding now has one too.
+
+| Date | Change |
+|---|---|
+| 2026-08-04 | ψ collision resolved: not a naming accident — the two sit one slot apart in the same equation |
+| 2026-08-04 | `zero_sum()` named — the prime-side Fermat potential, previously unnamed and inline-only |
+| 2026-08-04 | `clean_path_L()` — "the path of least primes" computed: L(x) = x, the pole term |
+| 2026-08-04 | `l_io_decomposition()` — the three slots by role name, identity held by construction |
+| 2026-08-04 | FOURTH COLUMN added to the primer's §4 dictionary (primes/explicit formula) |
+
 *Phase 24 — Claude Opus 5 — 2026-08-04*

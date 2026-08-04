@@ -189,14 +189,37 @@ B̂ = R̂† between the two Trees, already built, on real weak-lensing data.
       θ = apparent (observed) position — the clean-path endpoint = OBSERVABLE
       β = true source position — implied by the ACTUAL bent path = HIDDEN
 
-DICTIONARY (one operator, three domains):
-      lensing              translation               factoring
-    ───────────────    ────────────────────    ─────────────────────
-    β true source      the monad's meaning      the prime factors (root)
-    θ apparent         the English words        the composite N (leaf)
-    α deflection ∇ψ    the semantic bend        the arithmetic bend
-    −ψ Fermat pot.     the context curvature    N's own structure
-    L  clean geodesic  the vacuum utterance     the least-primes path
+DICTIONARY (one operator, FOUR domains — 4th column added 2026-08-04):
+      lensing              translation               factoring                PRIMES (explicit formula)
+    ───────────────    ────────────────────    ─────────────────────    ──────────────────────────────
+    β true source      the monad's meaning      the prime factors (root)  Λ(n) — von Mangoldt measure
+    θ apparent         the English words        the composite N (leaf)    ψ_Cheb(x) — the staircase
+    α deflection ∇ψ    the semantic bend        the arithmetic bend       gradient of the zero sum
+    −ψ Fermat pot.     the context curvature    N's own structure         Σ_ρ x^ρ/ρ  = zero_sum()
+    L  clean geodesic  the vacuum utterance     the least-primes path     x — the pole term (main term)
+
+    THE FOURTH COLUMN (2026-08-04, engine: ValaQuenta/modules/archimedes_screw).
+    Line the explicit formula up against the lens equation:
+
+        lensing:   L_(I|O)  =  L   −  ψ_Fermat
+        primes:    ψ_Cheb   =  x   −  Σ_ρ x^ρ/ρ   (− ln2π − ½ln(1−x⁻²))
+
+    Signs and arrangement match term for term, so CHEBYSHEV'S ψ IS NOT THE
+    COUNTERPART OF THE FERMAT POTENTIAL — it is the counterpart of L_(I|O)
+    itself. The prime side already HAD an L_(I|O) and was calling it ψ. The
+    object that genuinely corresponds to ψ_Fermat is the ZERO SUM, which had
+    no name in any repo until 2026-08-04 (it lived inline inside the explicit
+    formula, which is exactly why the ψ collision read as a naming accident).
+
+    And "the least-primes path" — the phrase this primer carried without a
+    formula — is now computed: L(x) = x, the pole term, what ψ would be if no
+    zero contributed anything. The vacuum utterance. See clean_path_L() and
+    l_io_decomposition(), which returns all three slots by role name.
+
+    NOTE the two ψ are DIFFERENT OBJECTS and must stay itemised: ψ_Cheb is a
+    monotone step function on ℝ⁺, one integration above a discrete measure;
+    ψ_Fermat is a smooth 2D field, two integrations above a continuous κ.
+    Same equation, adjacent slots — not the same symbol.
 
     SPEAKING ENGLISH FROM THE MONAD = the FORWARD lens map:
         β → θ = β + α(β)      (meaning, bent by context, becomes words)
