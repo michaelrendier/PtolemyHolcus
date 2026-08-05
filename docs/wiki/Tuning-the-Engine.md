@@ -4967,4 +4967,36 @@ for a 2048-bit modulus still means sieving to 2¹⁰²⁴.
 | 2026-08-05 | **Balanced RSA is hard because the two observables coincide** at ½ln N, not because the space is big |
 | 2026-08-05 | archimedes_screw v0.2 — 24 formulary equations, 28 shell commands |
 
+### Addendum 3 — the projection ledger (2026-08-05)
+
+`domain_ladder()`. "The domain" is not 2…N and not "primes with enough digits":
+
+```
+RSA-2048                                  log₂(count)
+all integers 2 … N                           2048
+all integers 2 … √N        trial range       1024
+all PRIMES ≤ √N            only these test   1014.53
+primes with exactly 1024 bits                1013.53
+GNFS pathway actually walked                  112
+```
+
+**The one-bit fact:** restricting to "big enough" primes prunes by a factor of
+exactly 2. Primes are top-heavy — 1/ln x moves 0.1% across an octave at 2¹⁰²⁴ —
+so π(x) − π(x/2) ≈ ½π(x). Half of all primes below any bound are in the top
+octave. Measured: 1.0028 at 1024 bits, 1.0014 at 2048, 1.0007 at 4096.
+
+Joins the other cheap constraints, all single digits: mod 4 ≈ 1 bit, mod 16 =
+3 bits, size = 1 bit.
+
+**⚠ The only row that is a target is GNFS at 2¹¹².** Everything above it is
+naive-domain accounting beaten in the 1990s. This row goes in front of any
+claimed reduction, before believing it.
+
+| Date | Change |
+|---|---|
+| 2026-08-05 | `domain_ladder()` added — the projection ledger's baseline row |
+| 2026-08-05 | √N bound = 1024 free bits; primes-only = 9.47; size = 1.00; GNFS = 901.53 more |
+| 2026-08-05 | **One-bit fact**: half of all primes below any bound live in the top octave |
+| 2026-08-05 | **2¹¹² is the only target.** Any claimed reduction gets measured against it first |
+
 *Phase 24 — Claude Opus 5 — 2026-08-04, extended 2026-08-05*
