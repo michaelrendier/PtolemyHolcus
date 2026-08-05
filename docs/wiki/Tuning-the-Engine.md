@@ -4904,4 +4904,67 @@ that the object it was hiding now has one too.
 | 2026-08-04 | `l_io_decomposition()` — the three slots by role name, identity held by construction |
 | 2026-08-04 | FOURTH COLUMN added to the primer's §4 dictionary (primes/explicit formula) |
 
-*Phase 24 — Claude Opus 5 — 2026-08-04*
+### Addendum 2 — when the leaf falls (2026-08-05)
+
+> *"lets say the composite is 14, whose prime factorization is 2 · 7… when the
+> sieve removes all the even numbers, the 14 is still stationary on the tree as
+> a leaf… but then when 7 is sieved, 14 drops off the tree."*
+
+Phase 24 built the screw to answer *when the leaf falls* and then couldn't:
+ψ jumps only at prime powers, so a composite contributes **nothing** to it. The
+engine could name every prime and say nothing about any child. Composites live
+in the complement, x − π(x) — the fourth search term, which had no per-composite
+structure at all.
+
+**Two falls, and the tree picks the right one:**
+
+| event | at | meaning |
+|---|---|---|
+| discovery | lpf(N) | first strike; you learn N is composite, cofactor free |
+| **fall** | **gpf(N)** | the sieve is finished with N |
+
+An earlier draft had this backwards, on Eratosthenes' first-strike semantics.
+The tree's criterion is correct and not for aesthetic reasons: **smoothness is
+defined by the greatest prime factor**, and smooth relations are the engine of
+GNFS, the quadratic sieve, CFRAC and index calculus. The tree arrived at the
+field's own criterion from the other direction.
+
+**The fall-time distribution already existed, in screw coordinates:**
+
+```
+u = ln N / ln(gpf N)          a RATIO of lifts — hence native to this axis
+u·ρ′(u) = −ρ(u−1)             Dickman 1930
+Ψ(x, x^(1/u)) ~ x·ρ(u)
+```
+
+Balanced semiprime ⟹ **u = 2 exactly**, exponent ½. The ½ again, through
+smoothness this time. `dickman_rho` agrees with published values to ~10⁻⁷.
+
+**The harvest is closed form** — `Ψ(X/p, p)` at step p, `π(min(p, X/p))` for
+two-parent leaves, cross-checked exactly against a direct `gpf_table` sieve.
+Cody's "rather simple event to track across a domain" is correct: one sweep.
+
+**Why balanced RSA is hard, exactly.** On the screw `ln p₁ + ln p₂ = ln N` is an
+*identity*, so a semiprime is one public constraint plus one free number
+δ = ½ln(p₂/p₁) — the entire hidden content, and the same object as the BKT
+threshold and the B₂ ≅ ℤ winding. The two falls are separated by 2δ. Balanced
+⟹ δ → 0 ⟹ **both falls collapse onto ½ln N.** No early event to catch. Not
+"the search space is large" — **the two observables coincide.**
+
+**Kept in the record:** tracking is cheap, reaching is not. `lpf`/`gpf` are
+trial division O(√n); the harvest is O(X log log X)/O(X). Observing the event
+for a 2048-bit modulus still means sieving to 2¹⁰²⁴.
+
+| Date | Change |
+|---|---|
+| 2026-08-05 | Engine's blind spot found: ψ sees no composites; the whole child side was missing |
+| 2026-08-05 | **The fall is at gpf(N), not lpf(N)** — 14 struck at 2, falls at 7. Earlier draft corrected |
+| 2026-08-05 | gpf is the field's own criterion (smoothness ⟹ GNFS/QS/CFRAC) — tree and literature agree |
+| 2026-08-05 | Dickman ρ adopted as the fall-time distribution; u = lnN/ln(gpf N) is a ratio of screw lifts |
+| 2026-08-05 | Balanced semiprime = u = 2 exactly, exponent ½ — the ½ arriving through smoothness |
+| 2026-08-05 | Harvest closed form Ψ(X/p,p), cross-checked exactly against the sieve table |
+| 2026-08-05 | δ = ½ln(q/p) named as a semiprime's entire hidden content; third route to the same object |
+| 2026-08-05 | **Balanced RSA is hard because the two observables coincide** at ½ln N, not because the space is big |
+| 2026-08-05 | archimedes_screw v0.2 — 24 formulary equations, 28 shell commands |
+
+*Phase 24 — Claude Opus 5 — 2026-08-04, extended 2026-08-05*
