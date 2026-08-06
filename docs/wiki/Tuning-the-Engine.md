@@ -5131,4 +5131,50 @@ found by the box-kite build, fixed.
 | 2026-08-05 | archimedes_screw v0.3: μ, Mertens, RH on the exclusion side, the three motions |
 | 2026-08-05 | `ctxengine archimedes_screw` bug (inner quotes) found and fixed |
 
+### Addendum — the charts DO touch, and the chart of addresses (same day)
+
+Cody, on the zero-cross-strut-edges finding: *"i'm pretty sure that those
+'surfaces' do actually touch somewhere… they are all from the fixed point
+anyway… but now we have a clue that 0_RB only points to 'fixed point space'…
+where the boundary and the geometries are the same thing, right?"*
+
+**Correct, and it does not contradict §7.** Two structures on one object:
+
+| structure | relation | result |
+|---|---|---|
+| adjacency | zero-divisor products | 7 components — disconnected |
+| skeleton | shared basis indices | every usable index in **6 of 7** charts |
+
+Every chart pair shares exactly 10 skeleton points. And **exactly two basis
+elements are in no Assessor: e₀ and e₈** — the identity (∅_RB, the fixed point)
+and the CD doubling generator. Each chart carries one zero mode, a zero mode is
+the constant function, so the seven are seven copies of one object. **Identify
+them and the atlas connects — at e₀ and nowhere else.** At the fixed point the
+boundary generator and the geometry's own mode are the same vector; away from
+it they separate.
+
+**The chart of addresses** (`chart_of`, `address_census`) is the monad
+connector. Census over the book, 3288 entries, descriptive only:
+
+```
+all 42 Assessors occupied
+mean fixed-point weight   0.6435
+mean outside share e₀+e₈  0.6537
+peak_dim = 0              2751 / 3288  (84%)
+dominant chart            strut 2: 30.1%  …  strut 7: 2.2%
+```
+
+Two thirds of the average address sits **outside the ZD geometry entirely**.
+This localises Phase 23's ~85% common mode: **it is e₀ + e₈**, the two elements
+belonging to no Assessor. The part of an address outside the geometry is exactly
+the part carrying no discriminating signal.
+
+| Date | Change |
+|---|---|
+| 2026-08-05 | **The charts DO touch** — in the skeleton (6 of 7 per index), not the adjacency |
+| 2026-08-05 | Only e₀ and e₈ are in no Assessor; the atlas glues at the fixed point |
+| 2026-08-05 | `chart_of` / `address_census` — the monad connector, exhaustive |
+| 2026-08-05 | Census: mean fixed-point weight 0.64, all 42 Assessors occupied |
+| 2026-08-05 | **Phase 23's common mode localised to e₀ + e₈** |
+
 *Phase 25 — Claude Opus 5 — 2026-08-05*
