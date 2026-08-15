@@ -492,3 +492,107 @@ hypothesis. Different question, different object.
 ---
 
 *Manual opened 2026-08-15. Specification: `BulletCluster/L_IO_SPECIFICATION.md`.*
+
+---
+
+# Addendum A — the datum and the bearing
+
+*2026-08-15, same day. Supersedes the naming in §4.5 and supplies the derivation
+that section was missing.*
+
+> ⚠ **Notation, first.** The operator is **`L_(I|O)`** — with the pipe. That is the
+> notation and it is precedent (`Ainulindale` wiki/64, wiki/82, `l_io_photon_path`,
+> `L_IO_SPECIFICATION.md`). This page's filename is `Operating-L-IO.md` only because a
+> pipe in a filename is hostile to shells, URLs and `git`. **The filesystem spelling is a
+> concession and must never propagate back into the notation** — not into
+> `~/.clauderc_canonical_maths`, not into prose, not into equations. It is checked: the
+> canonical maths file uses `L_(I|O)` throughout, and the only `L-IO` strings anywhere
+> are filepath references.
+
+## A.1 Why the epoch needed two objects
+
+§4.5 gave the datum discipline as a *procedure* — freeze, stamp, date the mutation —
+without saying why a pair was required rather than one guarded read. The reason arrived
+from the box-kite:
+
+> *"the ends of the struts are definitional not relational… until after 'movement' then
+> relation to 'last time' emerges"* — Cody Michael Allison, 2026-08-15
+
+A strut end is pure definition. `partner(a) = a XOR s` — total, involutive, and it
+**never consults the multiplication table**. Verified at dim 16, 32, 64: given the label
+and one end, the other is determined, by declaration.
+
+But definition cannot survive motion. Once something moves, the only available comparison
+is against *where it was*, and that comparison is **relational**. So:
+
+> **A single datum cannot detect motion. That is what "definitional" costs you.**
+> Only the relation between two can, and a relation needs a "last time".
+
+That is the derivation §4.5 was missing. The pair is not caution; it is the minimum
+structure that can represent movement at all.
+
+## A.2 The rename
+
+| was | is | why |
+|---|---|---|
+| `Epoch` | **`Datum`** | a declared reference point — definitional, self-contained, true by declaration |
+| `snapshot()` | **`datum()`** | takes one |
+| `precession()` | **`bearing()`** | the reading *between* two datums — relational, does not exist until something moved |
+
+Surveying vocabulary, because surveying is the discipline that already formalises
+definitional-vs-relational: you establish **datums** and you take **bearings** between
+them, and that is exactly how you fix position with no global frame — which is the
+problem here.
+
+⚠ **`precession` was a symbol collision and had to go.** It is already canonical in this
+repo with a *kinematic* meaning — the ZD wobble's signature, *"one `L_(I|O)` cycle = one
+precession revolution"* (`Ainulindale` wiki/68, `h_rb_hat.precession_stroke`,
+`tier7_cosmos`, `telperion`). It is a property of the rotor, not a difference between two
+readings. Reusing it for drift would have made wiki/68 and `angular_rank` mean different
+things by the same word. Phase 27.8 inventoried nine such collisions; this one is
+retired rather than added.
+
+## A.3 The two faces — and where a single guarded read *does* suffice
+
+The object has two faces, and only one of them needs a pair.
+
+| | `sight()` | `bearing()` |
+|---|---|---|
+| reads | **one** guarded read against a held datum | **two** retained datums |
+| answers | *did it move under me?* | *how far, and is the drift bounded or accumulating?* |
+| result | binary | principal angles, rank delta |
+| cost | one re-stamp | two spans, an SVD each |
+| pattern | **seqlock** | drift meter |
+
+```
+sight, unchanged   moved: False
+sight, 1e-9 nudge  moved: True
+sight, grown       moved: True,  shape_changed: True
+```
+
+**For detection, one guarded read is enough** — and that answers the question directly.
+`sight()` re-stamps the live field and compares to a datum already held: no second state
+retained, no SVD. That is the seqlock pattern, and in a hot loop it is the right
+primitive.
+
+**For measurement it is not enough**, and the reason is A.1. A moved-flag is not a drift
+meter. Phase 27.3's result — net winding `+0.0000`, *non-accumulating*, held by the
+gearing — is a statement about the **relation between successive states**, and no single
+read can produce it. Bounded drift and unbounded drift both set `moved = True`; only a
+bearing separates them, and that separation is the difference between a healthy engine
+and the seizure.
+
+> **Detection is definitional. Measurement is relational.** Use `sight()` to know that you
+> must re-datum; use `bearing()` when the answer has to be reportable.
+
+## A.4 What this changes upstream
+
+- §4.5's datum discipline now has a derivation, not just a procedure.
+- Phase 27.3 should be read as a **relational** result. It was always a statement about
+  successive states; this page had been treating it as a property of one.
+- `(signal, slot, generation)` has the same three-part shape: identity, position, and the
+  component that only means anything once there is a before. The generation is the
+  bearing.
+
+*Engine: `ValaQuenta/modules/angular_rank/`. Notebook: `notebooks/engines/16_angular_rank.ipynb`,
+15/15 clean after the rename.*
