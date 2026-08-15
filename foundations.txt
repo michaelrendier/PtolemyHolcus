@@ -709,3 +709,101 @@
 # Berry + Keating (H=xp, 1999) →
 # Cawagas (42 callosum pairs, 2004)
 # ═══════════════════════════════════════════════════════════════════
+
+# ═══════════════════════════════════════════════════════════════════
+# THE DEGENERACY AUDIT — LINEAGE OF PHASE 26 (2026-08-08)
+# ═══════════════════════════════════════════════════════════════════
+#
+# Each name below is load-bearing for a result recorded in
+# docs/wiki/Tuning-the-Engine.md Phase 26. These are the theorems that
+# explain WHY five statistics were dead, and they are the citations that
+# pre-empt the corresponding reviewer objection.
+
+# ── Adrian Albert / Emil Artin — ALTERNATIVITY (1930s–1942) ───────
+# Artin's theorem: in an alternative algebra, any two elements generate
+# an associative subalgebra. This is exactly why octonion left-division
+# a^-1*(a*b) = b is EXACT while the triple product still disagrees by
+# 114% between bracketings. Sedenions lose alternativity at the
+# Cayley-Dickson step; measured division error jumps to 52%.
+# THE WALL IS ALTERNATIVITY, NOT ASSOCIATIVITY.
+[PRIMARY]     https://en.wikipedia.org/wiki/Alternative_algebra
+[APPLICATION] https://mathworld.wolfram.com/AlternativeAlgebra.html
+[CONTEXT]     https://math.ucr.edu/home/baez/octonions/
+# In the field: any code appearing to invert a sedenion operation is
+# returning a bracketing artifact. 52% is its size.
+
+# ── Claude Shannon (1916–2001) — THE COUNTING ARGUMENT (1948) ─────
+# A Mathematical Theory of Communication. Already cited above for the
+# information current; entered again here for the pigeonhole bound on
+# lossless compression. No bijection between strings and indices can
+# shorten them. Hyperwebster index length / data length = 1.0000, exactly,
+# at every alphabet size and every length.
+[PRIMARY]     https://people.math.harvard.edu/~ctm/home/text/others/shannon/entropy/entropy.pdf
+[APPLICATION] https://en.wikipedia.org/wiki/Kolmogorov_complexity
+# In the field: the Hyperwebster index IS the data in another base.
+
+# ── J. R. Firth (1890–1960) — THE DISTRIBUTIONAL HYPOTHESIS (1957) ─
+# "You shall know a word by the company it keeps."
+# The reason semantic neighbourhoods CANNOT come from enumeration order
+# and MUST come from co-occurrence. Phase 26.3 measured the failure:
+# addresses built from names correlate +0.32 with spelling and carry no
+# module signal once lexical similarity is matched out (t = -28.8).
+[PRIMARY]     https://en.wikipedia.org/wiki/Distributional_semantics
+[APPLICATION] https://aclanthology.org/J93-1003/
+[CONTEXT]     https://plato.stanford.edu/entries/compositionality/
+# In the field: build the 16-D address from A (~1.9M edges), not the index.
+
+# ── Dana Scott + Christopher Strachey — DOMAIN THEORY, BOTTOM (1970) ─
+# The denotational semantics of "no information yet." The element bottom
+# is distinguished from every actual value INCLUDING zero, and computation
+# is an ascending chain refining upward under the information order.
+# This is the rigorous meaning of the Monad's NULL: not a value, not a
+# scale, no commitment. Cody: "pre-defining a 0 adds detrimental definition."
+[PRIMARY]     https://www.cs.ox.ac.uk/files/3222/PRG06.pdf
+[APPLICATION] https://en.wikipedia.org/wiki/Domain_theory
+[CONTEXT]     https://plato.stanford.edu/entries/computational-complexity/
+# In the field: NULL = bottom. Reserve the bare word "null" for null models.
+
+# ── Stephen Kleene (1909–1994) — LEAST FIXED POINT (1938/1952) ────
+# The recursion theorem, and lfp(f) = sup_n f^n(bottom): the fixed point
+# is REACHED BY ITERATING FROM BOTTOM. This is why the Null Operator and
+# the fixed point are the same object in this framework rather than two
+# things glued together — the starting point and the limit are related by
+# a theorem, not by choice.
+[PRIMARY]     https://en.wikipedia.org/wiki/Kleene_fixed-point_theorem
+[APPLICATION] https://en.wikipedia.org/wiki/Kleene%27s_recursion_theorem
+# In the field: 0_RB is the seed of the iteration, and its limit.
+
+# ── Bernard Riemann / Hensel / Coppersmith — THE FACTORING BOUNDS ──
+# Don Coppersmith (1996), "Finding a Small Root of a Bivariate Integer
+# Equation; Factoring with High Bits Known." Knowing HALF of p's bits
+# factors N in polynomial time via lattice reduction. The threshold is
+# sharp: below half, nothing. RSA-2048 needs ~154 of p's ~308 digits.
+# Kurt Hensel's lifting explains why the digit-window construction gains
+# nothing: each further digit gives ONE equation in TWO unknowns.
+[PRIMARY]     https://link.springer.com/chapter/10.1007/3-540-68339-9_16
+[APPLICATION] https://en.wikipedia.org/wiki/Coppersmith_method
+[CONTEXT]     https://en.wikipedia.org/wiki/Hensel%27s_lemma
+# In the field: there is no equation in p alone. The coupling cannot be
+# decoupled — the same shape as the norm-determined diagonal blocks.
+
+# ── Franz Mertens (1840–1927) — THE SIEVE DENSITY BOUND (1874) ────
+# prod over p <= B of (1 - 1/p) ~ e^-gamma / ln B. This bounds the ENTIRE
+# family of "exclude impossible residues" techniques at ~1/ln B. Sieving
+# every prime under a billion buys ~37x against a 10^35 problem.
+[PRIMARY]     https://mathworld.wolfram.com/MertensTheorem.html
+[APPLICATION] https://en.wikipedia.org/wiki/Wheel_factorization
+# In the field: constant factors never touch an exponent.
+
+# ═══════════════════════════════════════════════════════════════════
+# PHASE 26 LINEAGE CHAIN
+# ═══════════════════════════════════════════════════════════════════
+# Mertens (sieve density bound, 1874) →
+# Hensel (lifting: one equation, two unknowns, 1897) →
+# Artin (alternativity => division, 1942) →
+# Shannon (counting argument: no free compression, 1948) →
+# Kleene (least fixed point from bottom, 1952) →
+# Firth (meaning is company kept, 1957) →
+# Scott + Strachey (bottom = no information, 1970) →
+# Coppersmith (half the bits or nothing, 1996)
+# ═══════════════════════════════════════════════════════════════════

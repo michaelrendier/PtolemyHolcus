@@ -57,3 +57,9 @@ PtolC/ptol
 ahura-mazda
 bumblebee
 totp_test
+
+# python venv (2026-08-15) — see env.sh
+.venv/
+
+# Local Claude Code overrides — machine state, not source
+.claude/settings.local.json

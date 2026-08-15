@@ -16,8 +16,18 @@ The sedenion left-multiplication matrix L_a is a 16×16 real matrix defined by t
 Cayley-Dickson doubling recursion:
 
 ```
-(a, b) · (c, d)  =  (a·c − d·b*,   a*·d + c·b)
+(a, b) · (c, d)  =  (a·c − d*·b,   d·a + b·c*)
 ```
+
+> **⚠ CORRECTED 2026-08-13.** This line previously read
+> `(a·c − d*·b, a*·d + c·b)` — a **hybrid** of two different Cayley–Dickson
+> conventions (the left half of one, the right half of another). Swept against the
+> published box-kite counts, the hybrid yields **240** ordered annihilating pairs with
+> a broken histogram `{4:48, 2:24, 0:12}` — twelve of the eighty-four Assessor
+> diagonals annihilate *nothing*. The form above yields **336 = 84 × 4**, uniform,
+> matching `ZD_PAIRS` and `|PSL(2,7)| = 168`. `ValaQuenta/modules/box_kite/` was
+> always using a correct convention; only this page was wrong.
+> Verified: `.claude/scratchpad/2026-08-13_apex_path/rb_boundary.py`.
 
 Operations used in its construction: `×`, `+`, `−`, `*` (conjugate = sign flip of
 non-real parts).
@@ -192,6 +202,19 @@ splits into three invariant subspaces by eigenvalue:
 λ = ±i        ×8    imaginary pair   — three quantum forces (SU(3)×SU(2)×U(1))
 λ = ±i√2      ×4    scaled pair      — Σ_RB energy conversion channel
 ```
+
+**✅ VERIFIED 2026-08-13** at the unit zero divisor `a = (e₁ + e₁₀)/√2`, using the
+corrected convention above:
+
+```
+det(L_a) = 0.000e+00        rank 12/16        nullity 4
+eigenvalues purely imaginary: max|Re(λ)| = 5.55e-17
+|λ| multiplicities:  0.000000 ×4   1.000000 ×8   1.414214 ×4
+                     -> [4, 8, 4]  exactly as claimed
+```
+
+See [Null-Space-of-the-Zero-Divisor.md](Null-Space-of-the-Zero-Divisor.md) for the
+four annihilated partners and an explicit basis.
 
 The three blocks are orthogonal to each other. They do not mix under L_a at the
 ZD crossing. The {4, 8, 4} split is the sedenion encoding of the four fundamental

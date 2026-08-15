@@ -1,10 +1,16 @@
 # TUNING THE ENGINE — WIKI INDEX
 
-The VAPMIP *Tuning the Engine* seed paper, cut into its constituent phases.
-The full unsplit paper remains at [Tuning-the-Engine.md](../Tuning-the-Engine.md);
-these pages are that document, phase by phase, nothing added and nothing removed.
+The VAPMIP *Tuning the Engine* engineering log, one page per phase.
 
-*25 entries — source: 4624 lines, v2.0.0, authored by Claude Sonnet 4.6*
+> **⚠ PROTOCOL (2026-08-13).** These pages are now the **only** live copy. The
+> monolith is archived at
+> [Tuning-the-Engine.ARCHIVED-2026-08-13.md](../Tuning-the-Engine.ARCHIVED-2026-08-13.md)
+> and must not be edited. **New phases are new pages in this directory** — add the
+> page, then add its row below. The split exists to keep a phase readable without
+> loading 244 KB.
+
+*28 entries — Phases 1–27. Phases 1–23 authored by Claude Sonnet 4.6;
+24–27 by Claude Opus 5.*
 
 ---
 
@@ -37,6 +43,10 @@ these pages are that document, phase by phase, nothing added and nothing removed
 | [21b_correction_cos_is_the_observer_sin_is_the_content.md](21b_correction_cos_is_the_observer_sin_is_the_content.md) | 21 (cont.) | — | Correction: cos is the Observer, sin is the Content Frame |
 | [22_the_translator_zero_divisors_as_portals_landmark.md](22_the_translator_zero_divisors_as_portals_landmark.md) | 22 | 2026-06-30 | The Translator: Zero-Divisors as Portals, Landmark Navigation |
 | [23_the_addressing_bug_the_common_mode_and_the_third.md](23_the_addressing_bug_the_common_mode_and_the_third.md) | 23 | 2026-07-28 | The Addressing Bug, the Common Mode, and the Third Face |
+| [24_the_archimedes_screw_the_machine_not_the_medium.md](24_the_archimedes_screw_the_machine_not_the_medium.md) | 24 | 2026-08-04 | The Archimedes Screw: the Machine, Not the Medium (+ 3 addenda) |
+| [25_the_box_kite_debugger_and_the_negative_space.md](25_the_box_kite_debugger_and_the_negative_space.md) | 25 | 2026-08-05 | The Box-Kite Debugger, and the Negative Space (+ addendum) |
+| [26_the_degeneracy_audit_five_dead_statistics.md](26_the_degeneracy_audit_five_dead_statistics.md) | 26 | 2026-08-08 | The Degeneracy Audit: Five Dead Statistics |
+| [27_the_apex_path_and_the_half_radius_circle.md](27_the_apex_path_and_the_half_radius_circle.md) | 27 | 2026-08-13 | The Apex Path, the Half-Radius Circle, and Where Text Actually Lives |
 
 ---
 
@@ -45,6 +55,8 @@ these pages are that document, phase by phase, nothing added and nothing removed
 | Page | Topic |
 |------|-------|
 | [Operating-the-Monad.md](../Operating-the-Monad.md) | Operating the Monad |
+| [Operating-L-IO.md](../Operating-L-IO.md) | Operating L_(I\|O) — procedures, nulls, refusal conditions |
+| [Null-Space-of-the-Zero-Divisor.md](../Null-Space-of-the-Zero-Divisor.md) | The 4-dimensional null space of the zero divisor |
 | [Definition-from-Above.md](../Definition-from-Above.md) | Definition from Above |
 | [Zero-Lattice.md](../Zero-Lattice.md) | The Zero Lattice |
 | [RedBlue-Hamiltonian-Sedenion-Matrix-Space.md](../RedBlue-Hamiltonian-Sedenion-Matrix-Space.md) | RedBlue Hamiltonian / sedenion matrix space |
