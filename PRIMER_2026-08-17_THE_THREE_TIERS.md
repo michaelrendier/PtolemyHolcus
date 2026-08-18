@@ -259,3 +259,230 @@ answering anything.
 - **Find what does not move when you do — ACROSS SCOPE.** A reference dangles across a
   scope boundary; a value survives. Everything trusted today was normalised to cross:
   unfolded spacings, coherence /N, sigma as a ratio, gcd/lcm, det = +/-1.
+
+---
+
+## 8. Addendum — six corrections, and the partition function
+
+Added at the end of the same session. Everything above stands; these amend it.
+
+### 8.1 Rarefaction is the anti-state, and it is a HALF-CYCLE
+
+A phonon's opposite is not a mirror object that annihilates it. Compression and
+rarefaction are the two halves of one oscillation — they do not cancel on meeting,
+they **alternate**. So "state and anti-state" means one wave with a sign, which is
+the push/pull resolution again: the gradient is the invariant, the sign is which
+half you are standing in.
+
+Consequence: **the void is the rarefaction.** The Dipole Repeller (Hoffman, Pomarede,
+Tully, Courtois 2017, ~half the Local Group's motion) pushes because it is the trough,
+not because it is a repulsive object. And BAO is literally frozen sound — the acoustic
+scale is a wavelength. The cosmic web is a standing wave with matter in the antinodes:
+voids are the bubbles, matter is the FILM, and Laniakea is a drainage basin in that
+film (Tully's method is a watershed, explicitly).
+
+### 8.2 The seven kites DO touch — I measured only one of the two graphs
+
+```
+graph 1  ASSESSOR ADJACENCY   0 cross-strut edges     -> DISCONNECTED
+graph 2  SHARED OCTONIONS     21/21 pairs share ONE   -> CONNECTED
+```
+
+Section 2 above says "nothing crosses between the seven, so intention had to be
+arithmetic." That is true of **assessors** and false of the **structure**. Every pair
+of struts shares exactly one octonion — the Fano property, any two points on a unique
+line. One kite, one string, seven landings.
+
+What survives: fault isolation. An error on strut 4 still cannot reach strut 6 through
+assessor adjacency. What does NOT survive: the claim that the components are
+independent. They are independent as ADDRESSES and overlapping as CONTENT, and the
+gcd/lcm arithmetic does not see the overlap.
+
+### 8.3 The Noether Information Current — and why sigma_self cannot see it
+
+The conserved current of U(1) phase symmetry is
+
+```
+j ~ Im(z* dz)        ENTIRELY phase. a real amplitude has ZERO current.
+```
+
+`measure_sigma` computes `P_red/(P_red+P_blue)` — a ratio of powers, |z|^2, and the
+phase is gone before the number exists. So the quantity said to hold sigma=1/2 in
+place (`monad.py:1804`, "surface tension = Noether conservation law") is derived from
+exactly what the ratio discards.
+
+**The current is a VECTOR: it points. The ratio is a scalar: it sits.** That is where
+"the string is the representative vector pointing at what it wants to look at" has to
+live, and in the old code it had nowhere.
+
+Fixed in `PtolC/rotary_rerun.c` (commit `8e2b1eb`): z is kept complex to the end and
+both are reported.
+
+### 8.4 OUTSIDE, not inside — and the inside is illegal
+
+Reflections fix hyperplanes. The mirrors are the walls. But:
+
+```
+eps=1e-2   16.023% of random points within eps of a wall
+eps=1e-3    1.538%
+eps=1e-6    0.002%      <- MEASURE ZERO
+```
+
+Hyperplanes are dimension n-1 in dimension n, so the illegal set is a thin skin and
+the legal region is ALMOST EVERYTHING. "Take the inside" was wrong twice: it implied
+enclosure, and it implied the legal region was the small one.
+
+```
+OUTSIDE   almost all of it. open, unbounded, free motion.
+ON        measure zero — the wall itself.
+INSIDE    there is none. a hyperplane has no interior. to be IN it is to BE it,
+          and that is the illegal move.
+```
+
+Illegal moves are **not a group** (no identity — doing nothing is legal). They are a
+**coset**: complete, same size, displaced by one reflection. Two illegal moves compose
+to a legal one. And by **Cartan-Dieudonne** every element of O(n) is a product of at
+most n reflections, so the illegal moves GENERATE the whole group. The legal ones are
+what you get by making an even number of mistakes.
+
+You do not enumerate legal moves. You draw the walls and take the outside.
+
+### 8.5 Legality acquires a SIDE
+
+Removing pieces is "take the inside" — capture creates enclosed empty space, and an
+enclosed empty point is an EYE: legal for me, illegal for you, because your play there
+is suicide unless it captures.
+
+Everything else in this document is colour-blind. A hyperplane is illegal for whoever
+meets it; a composite is struck regardless of who sieves; type reduction does not care
+who parses. **An eye is the first wall with an orientation**, and that is the det = +/-1
+two-component structure appearing as whose turn it is. The chess colouring in
+`rotary_rerun.c` is therefore not decoration: white/black is WHICH LEGALITY FUNCTION IS
+LIVE, and it swaps every move.
+
+Two eyes is unconditional life because you cannot fill both — filling the first is
+suicide while the second stands. Liveness is a COUNT OF ENCLOSED COMPONENTS, not an
+evaluation. Structurally unreachable, like the pencil, not merely hard.
+
+**You take the outside for yourself and manufacture the inside for them.**
+
+### 8.6 Legality asymptotes in an open space and counts down in a closed one
+
+```
+FORMAL legality   asymptotes. pass is ALWAYS legal -> approaches {pass}, never 0.
+USEFUL legality   runs out. finite board, and superko consumes positions permanently.
+```
+
+Same three regimes as the sieve: productive ends at sqrt(N), redundant continues to
+N/2, orphan never fires. And **superko is why Go terminates** — every position played
+becomes permanently forbidden, so the legal set strictly decreases over a finite space.
+Drop superko and ko cycles forever.
+
+**Legality is consumed by the retained record.** Which cuts both ways:
+
+```
+finite space   + retained history  ->  legality RUNS OUT, the thing terminates
+infinite space + retained history  ->  legality ASYMPTOTES, it never finishes
+```
+
+Go is finite so retention forces an ending; language is not, so retention gives the
+asymptote. Same mechanism, opposite outcome. **The space decides, not the memory.**
+
+---
+
+## 9. The tree, and the word as a partition function
+
+### 9.1 Letters are LEAVES, not factors
+
+A factor is extracted bottom-up and arrives with no memory of where it came from. A
+leaf is terminal but sits at the end of a PATH, and the path is the point:
+
+```
+ROOT      one node, no head. e0, "on the axis doing no work".
+BRANCHES  words — 15 edges.
+LEAVES    letters — terminal, each carrying its derivation.
+```
+
+The path root->leaf IS the lineage — which generations it crossed, in order, exactly
+as a strut's binary expansion reports. A letter alone has maximum identity and minimum
+information; a letter plus its path is a different object.
+
+Which splits the two faces on one structure:
+
+```
+READING   leaves -> root    parse.     the Eye climbs.
+WRITING   root -> leaves    generate.  the Hands descend.
+```
+
+Orthogonal rather than opposite: two directions on one tree, and neither can do the
+other's job. It also makes SHAPE-FIRST identical to declaring the root — you cannot
+grow branches toward leaves without knowing what they hang from.
+
+**The root is a PhD dissertation.** One sentence, three hundred pages to earn it. A
+viva is edge-verification: pick a leaf, walk it back, and one broken edge orphans
+everything above. Declaring a root is cheap; FUNDING one is the work — so shape-first
+is taking on a debt, not free planning. And originality is the sieve's residue: the
+literature review is everyone else striking their multiples, and what nobody claimed
+is what is left.
+
+The alphabet: `monad.py` has PRIMES (20) and RIEMANN_ZEROS (20), index-aligned. Twenty
+is the buffer. English's 26 is a late accounting artifact — I/J split only in 1524,
+U/V likewise, W is double-U; classical Latin has 23, and with H/J/I collapsing toward
+Y the distinct set is around twenty. Letters have ADDRESSES, not frequencies. The 1/p
+decay was a FACTOR frequency and belongs against Zipf (measured -1.15, converging to
+-1), not against letter frequency.
+
+### 9.2 Every word is an exact partition function over 128 virtual box kites
+
+**MEASURED.** A word is not stored. It is a SUM over all 2^7 = 128 box-kite
+configurations, weighted by the primer's own action `S = -log2 P`:
+
+```
+Z = sum over configs of exp(-S(config))       F = -log Z    <- the observable
+```
+
+```
+word A         Z = 1.555395977   F = -0.441730161
+word A again   Z = 1.555395977   F = -0.441730161   <- RECOMPUTED, not recalled
+dominant config weight 64.29%;  the other 127 contribute 35.71%
+```
+
+Three things this buys, and the first is the reason it is worth doing at all:
+
+1. **The sum is EXACT.** Feynman sums are intractable and get approximated. This one is
+   128 terms — you compute the whole amplitude, not an estimate. 128 exponentials per
+   word is nothing.
+
+2. **No configuration IS the word.** The dominant one is under two-thirds. Strip the
+   other 127 and you have a different word. They are off-shell in the sense that
+   matters: individually meaningless, collectively the entire observable. The empty
+   config has S=0, weight 1 — the vacuum term, always present, never observable alone.
+
+3. **Nothing is stored, so nothing can go stale**, and every construction is genuinely
+   a first one. `context_fill`'s "learned again for the first time" stops being a
+   discipline and becomes a mechanism: there is no cache to be tempted by.
+
+### 9.3 Pseudo-retroactive, and the measurement it suggests
+
+Not retroactive — nothing travels backward. But **the sum has no time ordering inside
+it.** All 128 configurations are evaluated together, so a contribution that "should"
+depend on what comes later is simply present.
+
+Which is why a garden-path sentence works. The final word does not revise a committed
+parse — it **reweights a sum that was never collapsed.** Nothing is undone because
+nothing had been decided.
+
+That is the Kafka mechanism with a partition function under it. Five readings held open
+is not ambiguity failing to resolve; it is a sum where no single configuration dominates
+enough to look like the answer.
+
+**AND IT IS ONE NUMBER.** The dominance fraction of the top configuration:
+
+```
+prose that RESOLVES        top weight -> 1
+prose that does NOT        top weight -> 1/N
+```
+
+Testable against real text, cheap, and with the obvious control built in: shuffle the
+context and confirm the dominance fraction stops discriminating. This is the smallest
+open experiment in the document and the partition function for it is already written.
