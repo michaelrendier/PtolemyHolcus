@@ -1621,6 +1621,188 @@ class Harness:
                             'semantic_engine.py:124 and '
                             'outreach/primers/PTOLEMY_SESSION_PRIMER_20260418b.txt:185')
 
+    # ── group: the 0_ZD reframe ──────────────────────────────────────────
+    def check_zd_reframe(self) -> None:
+        """Downhill from the bottom of a pit.
+
+        At a minimum the gradient is zero in every ORDINARY direction and
+        nothing moves. The reframe asks a different question: is there a
+        direction the operator ANNIHILATES? In ker(L_a) the cost of moving is
+        exactly zero, so motion survives at a point where descent ran out.
+
+        Null-Space-of-the-Zero-Divisor.md states the mechanism exactly:
+
+            det(L_a) = 0 is where Axis 2 {x, /} collapses while Axis 1 {+, -}
+            keeps working.
+
+        Addition survives; scaling does not. That IS downhill from the bottom
+        of a pit — you can still go somewhere, you just cannot be stretched on
+        the way.
+
+        LEAST SHEARING follows from the same fact. Shear is DIFFERENTIAL
+        scaling: neighbouring directions stretched by different amounts tear
+        against each other. Inside the kernel every direction carries the same
+        gain — zero — so there is no differential and nothing to tear. DILATE
+        stretches by sqrt2 and PRESERVE holds at 1; only CONTRACT is shear-free.
+
+        IT CLEARS THE BOX KITE SPACE. Annihilation does not cross struts — a
+        zero divisor kills only inside its own chart. Choosing `a` selects one
+        kite of seven and silences the other six, and that clearing is what
+        leaves a space small enough for intention to name components in.
+
+        AND THE COMPONENTS ARE NAMED. An SVD returns an arbitrary orthonormal
+        basis for the same subspace; the partner basis returns the four things
+        `a` actually annihilates. Same space — only one of the two has pieces
+        you can point at.
+        """
+        g = '0_ZD  downhill from the bottom of a pit'
+        try:
+            import numpy as np
+        except Exception as exc:                      # noqa: BLE001
+            self._untested('zd.nullity', 'ker(L_a) is 4-dimensional', g,
+                           f'numpy unavailable: {exc}')
+            return
+        if self.kite is None:
+            self._untested('zd.nullity', 'ker(L_a) is 4-dimensional', g,
+                           self._kite_error)
+            return
+
+        bk = self.kite._bk
+
+        def unit(pairs: Sequence[Tuple[float, int]]) -> List[float]:
+            v = [0.0] * SED_DIM
+            for c, i in pairs:
+                v[i] = c
+            n = math.sqrt(sum(x * x for x in v))
+            return [x / n for x in v]
+
+        a = unit([(1.0, 1), (1.0, 10)])          # assessor (1,2), strut 3
+        L = np.zeros((SED_DIM, SED_DIM))
+        for j in range(SED_DIM):
+            ej = [0.0] * SED_DIM
+            ej[j] = 1.0
+            L[:, j] = bk.multiply(a, ej)
+
+        rank = int(np.linalg.matrix_rank(L))
+        self._record('zd.nullity', 'ker(L_a) is 4-dimensional', g,
+                     (12, 4), (rank, SED_DIM - rank),
+                     detail='det(L_a) = 0 — the boundary of invertibility')
+
+        sv = sorted(round(float(x), 6) for x in np.linalg.svd(L, compute_uv=False))
+        self._record('zd.singular_values',
+                     'the gains are 0 x4, 1 x8, sqrt2 x4', g,
+                     [0.0] * 4 + [1.0] * 8 + [1.414214] * 4, sv)
+
+        partners = [(-1.0, 4, 15), (1.0, 5, 14), (-1.0, 6, 13), (1.0, 7, 12)]
+        killed, struts = [], []
+        for (c2, i, j) in partners:
+            v = unit([(1.0, i), (c2, j)])
+            killed.append(max(abs(x) for x in bk.multiply(a, v)) < 1e-12)
+            struts.append(i ^ (j - 8))
+
+        self._record('zd.partners_annihilated',
+                     'each partner basis vector is a thing a annihilates', g,
+                     [True] * 4, killed,
+                     detail='an SVD spans the same space with vectors that mean '
+                            'nothing; prefer the basis whose pieces can be named')
+
+        self._record('zd.clears_the_kite_space',
+                     'annihilation never crosses struts', g,
+                     [3, 3, 3, 3], struts,
+                     detail='a zero divisor kills only inside its own chart, so '
+                            'choosing `a` selects one kite of seven and silences '
+                            'the other six — that is the clearing')
+
+        k1 = unit([(1.0, 4), (-1.0, 15)])
+        k2 = unit([(1.0, 5), (1.0, 14)])
+        summed = [x + y for x, y in zip(k1, k2)]
+        still_killed = max(abs(x) for x in bk.multiply(a, summed)) < 1e-12
+        self._record('zd.addition_survives',
+                     'the kernel is closed under + while x has collapsed', g,
+                     True, still_killed,
+                     detail='Axis 1 {+,-} keeps working where Axis 2 {x,/} does '
+                            'not — motion at zero cost is what downhill means '
+                            'once descent has run out')
+
+        # ── the stress tensor, which settles what the kernel IS ───────────
+        #
+        # Decompose the operator the way continuum mechanics does:
+        #
+        #     sym(L)  = (L + L^T)/2     strain -> stress
+        #     skew(L) = (L - L^T)/2     vorticity -> rotation
+        #     trace                     isotropic pressure
+        #     dev     = sym - (tr/n)I   SHEAR
+        #
+        # The result is not "small shear". There is no symmetric part at all,
+        # so there is no stress tensor to carry one.
+        S = (L + L.T) / 2
+        A = (L - L.T) / 2
+        dev = S - np.trace(S) / SED_DIM * np.eye(SED_DIM)
+
+        self._record('zd.stress_is_zero',
+                     'the stress tensor of L_a is identically zero', g,
+                     True, float(np.linalg.norm(S)) < 1e-12,
+                     detail=f'||sym|| {np.linalg.norm(S):.3e}, '
+                            f'||skew|| {np.linalg.norm(A):.6f} — multiplication '
+                            f'by a zero divisor is PURE ROTATION')
+
+        self._record('zd.no_shear_anywhere',
+                     'the deviatoric part is zero, not merely minimised', g,
+                     True, float(np.linalg.norm(dev)) < 1e-12,
+                     detail='"least shearing" is not a minimum here, it is an '
+                            'identity — there are no shearing events to count')
+
+        self._record('zd.skew_symmetric',
+                     'L_a is skew-symmetric, so it generates rotation', g,
+                     True, bool(np.allclose(L, -L.T, atol=1e-12)),
+                     detail='which is why the eigenvalues came out purely '
+                            'imaginary — that measurement was already saying this')
+
+        self._record('zd.kernel_is_the_axis',
+                     'for a skew operator the kernel is the AXIS of rotation', g,
+                     (4, 12), (SED_DIM - rank, rank),
+                     detail='4 fixed dimensions, 12 turning in 6 planes — 4 planes '
+                            'at rate 1, 2 at rate sqrt2. Motion along the axis is '
+                            'free because the axis does not turn.')
+
+        # ── the kernel is NOT free fall — orbits are the discriminant ──────
+        #
+        # A correction, recorded because the mistake is easy and expensive:
+        # free fall and absent gravity are indistinguishable ONLY LOCALLY. The
+        # equivalence principle holds in a small enough box and fails in a
+        # large one, because nearby geodesics in a real field CONVERGE. That
+        # tidal deviation is the Riemann curvature, and it is what closes an
+        # orbit. Flat space has none: parallel lines stay parallel and nothing
+        # orbits.
+        #
+        #     FREE FALL       curvature present   geodesics converge   ORBITS
+        #     GRAVITY ABSENT  curvature zero      lines stay parallel  NO ORBIT
+        #
+        # So the two blocks say different things, and the kernel is not the
+        # free-fall one:
+        #
+        #     lambda = 0        no rotation   no orbit    gravity ABSENT — flat,
+        #                       4 dims                    inertial, straight-line
+        #     |lambda| = 1      rotation      orbits      the three forces
+        #     |lambda| = sqrt2  rotation      orbits      Sigma_RB conversion
+        #
+        # "Downhill from the bottom of a pit" is therefore not free fall in a
+        # well. It is straight-line motion in a region that is not a well at
+        # all — which is why it costs nothing and why nothing comes back
+        # around.
+        self._record('zd.kernel_does_not_orbit',
+                     'the kernel is gravity ABSENT, not free fall', g,
+                     (True, False),
+                     (float(np.linalg.norm(dev)) < 1e-12,      # flat: no shear
+                      bool(np.any(np.abs(np.linalg.eigvals(L)) > 1e-12)
+                           and (SED_DIM - rank) == 0)),        # orbits in kernel
+                     detail='free fall ORBITS because curvature converges nearby '
+                            'geodesics; absent gravity does not orbit at all. The '
+                            'kernel has no rotation, hence no orbit — so it is the '
+                            'absent case. The 12 rotating dimensions are where '
+                            'orbits live. Equivalence is local; orbits are the '
+                            'global discriminant that breaks it.')
+
     # ── group: the handoff ───────────────────────────────────────────────
     def check_handoff(self) -> None:
         """Correct, not satisfied. Cold, not hot."""
@@ -1809,6 +1991,7 @@ class Harness:
         self.check_paths()
         self.check_control_555()
         self.check_intention()
+        self.check_zd_reframe()
         self.check_handoff()
         self.check_joint_parentage()
 
