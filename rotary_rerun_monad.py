@@ -663,323 +663,160 @@ class LongPath(_Bound):
         return self._entries[:index + 1]
 
 
-class Intention:
-    """A root set over the 7 box kites, encoded as one integer.
+class Reading:
+    """A snapshot of an intention at one moment. Immutable, and STAMPED.
 
-    An intention is a SUBSET — the declaration of what must survive. Subsets of
-    7 things encode as squarefree products of 7 primes, uniquely, by unique
-    factorisation. So set operations become arithmetic on a single number:
-
-        gcd(a, b)      what both intend to keep      SHARED
-        lcm(a, b)      what either intends to keep   COMBINED
-        a % b == 0     b is contained in a           SUBSUMPTION
-
-    This is the retained record in its smallest useful form. An XOR hash tells
-    you two intentions differ; the quotient here tells you HOW they differ,
-    because factoring gives the roots back. Nothing is discarded, so nothing is
-    one-way.
-
-    Capacity is 2^7 = 128 distinct intentions, and that is a real ceiling — it
-    is the number of subsets, not a tuning choice. Fine for "which relational
-    channels matter right now"; nowhere near a vocabulary, which is exactly why
-    identity lives on the hash chain instead of in here.
-
-    Cost: the 7 primes multiply to 510,510 — 19 bits. An intention is a uint32
-    with room to spare, so gcd and lcm are single instructions.
+    A state cannot be compared to another state without saying when each was
+    read. So a comparison operates on Readings, never on the live object, and
+    two Readings from different moments refuse to combine — the same rule as
+    a cross-space index, one level up.
     """
 
-    PRIMES = (2, 3, 5, 7, 11, 13, 17)   # one per box kite, struts 1..7
-    MODULUS = 510510                    # their product; 19 bits
-    EMPTY = 1                           # the empty intention: keep nothing
+    __slots__ = ('code', 'moment', 'holder')
 
-    __slots__ = ('code',)
-
-    def __init__(self, kites: Sequence[int] = ()) -> None:
-        code = 1
-        for s in kites:
-            if not (1 <= s <= 7):
-                raise ValueError(f'box kite {s} out of range 1..7')
-            p = Intention.PRIMES[s - 1]
-            if code % p:                # squarefree: a root is kept or it is not
-                code *= p
+    def __init__(self, code: int, moment: int, holder: int) -> None:
         self.code = code
-
-    @classmethod
-    def from_code(cls, code: int) -> 'Intention':
-        obj = cls()
-        obj.code = code
-        return obj
+        self.moment = moment
+        self.holder = holder
 
     @property
     def kites(self) -> List[int]:
-        """Factor the code back. The roots were never discarded."""
         return [i + 1 for i, p in enumerate(Intention.PRIMES) if self.code % p == 0]
 
-    def shared_with(self, other: 'Intention') -> 'Intention':
-        """gcd — what both intend to keep."""
-        return Intention.from_code(math.gcd(self.code, other.code))
+    @property
+    def vector(self) -> List[int]:
+        """Exponent per kite — direction is WHICH prime, magnitude is HOW MANY."""
+        out, c = [], self.code
+        for p in Intention.PRIMES:
+            e = 0
+            while c % p == 0:
+                c //= p
+                e += 1
+            out.append(e)
+        return out
 
-    def combined_with(self, other: 'Intention') -> 'Intention':
-        """lcm — what either intends to keep."""
+    def _require_same_moment(self, other: 'Reading') -> None:
+        if self.moment != other.moment:
+            raise ValueError(
+                f'readings taken at different moments ({self.moment} vs '
+                f'{other.moment}) — intention is a STATE, so a comparison '
+                f'across time is comparing a now to a then'
+            )
+
+    def shared_with(self, other: 'Reading') -> 'Reading':
+        """gcd — componentwise MIN. The shared minimum commitment."""
+        self._require_same_moment(other)
+        return Reading(math.gcd(self.code, other.code), self.moment, 0)
+
+    def combined_with(self, other: 'Reading') -> 'Reading':
+        """lcm — componentwise MAX."""
+        self._require_same_moment(other)
         g = math.gcd(self.code, other.code)
-        return Intention.from_code(self.code // g * other.code)
+        return Reading(self.code // g * other.code, self.moment, 0)
 
-    def subsumes(self, other: 'Intention') -> bool:
-        """Is `other` entirely contained in this intention?"""
+    def summed_with(self, other: 'Reading') -> 'Reading':
+        """product — componentwise SUM. Vector addition of the magnitudes."""
+        self._require_same_moment(other)
+        return Reading(self.code * other.code, self.moment, 0)
+
+    def subsumes(self, other: 'Reading') -> bool:
+        self._require_same_moment(other)
         return other.code != 0 and self.code % other.code == 0
 
-    def __eq__(self, other: object) -> bool:
-        return isinstance(other, Intention) and self.code == other.code
+    def __repr__(self) -> str:
+        return f'Reading({self.vector} = {self.code} @t{self.moment})'
 
-    def __hash__(self) -> int:
-        return hash(self.code)
+
+class Intention:
+    """A STATE, not a definition. Held, changed, decayed, and read.
+
+    An earlier version made this an immutable code — construct once, compare
+    forever. That is a definition: it says what something IS, timelessly. An
+    intention is not that. It is what an agent is committed to RIGHT NOW, and
+    it moves.
+
+    THE VECTOR. Direction is which prime; magnitude is its exponent. So
+
+        gcd   componentwise MIN    the shared minimum commitment
+        lcm   componentwise MAX    the combined reach
+        a*b   componentwise SUM    vector addition
+
+    and squarefree — every exponent 0 or 1 — is the degenerate unit-cube case
+    where MIN and MAX collapse to set intersection and union. The set version
+    was the vector with the magnitudes discarded. Repeating a root DOES deepen
+    an intention; the earlier comment saying otherwise was the set assumption
+    showing.
+
+    THE MOMENT. Because it is a state, every read is stamped, and two Readings
+    from different moments refuse to combine. A definition can be compared any
+    time. A state has to be sampled, and comparing across samples is comparing
+    a now to a then.
+
+    Capacity is no longer 2^7. With magnitudes it is unbounded in principle and
+    bounded in practice by whatever ceiling the holder decays toward.
+    """
+
+    PRIMES = (2, 3, 5, 7, 11, 13, 17)
+    MODULUS = 510510
+    _next_holder = 1
+
+    __slots__ = ('_v', '_moment', 'holder')
+
+    def __init__(self, kites: Sequence[int] = ()) -> None:
+        self._v = [0] * 7
+        self._moment = 0
+        self.holder = Intention._next_holder
+        Intention._next_holder += 1
+        for s in kites:
+            self.intend(s)
+
+    # ── the state changes ────────────────────────────────────────────────
+    def intend(self, kite: int, strength: int = 1) -> None:
+        """Commit further to a direction. Deepens rather than re-declares."""
+        if not (1 <= kite <= 7):
+            raise ValueError(f'box kite {kite} out of range 1..7')
+        self._v[kite - 1] += strength
+        self._moment += 1
+
+    def release(self, kite: int, strength: int = 1) -> None:
+        """Let go, partially or wholly. Never below zero."""
+        if not (1 <= kite <= 7):
+            raise ValueError(f'box kite {kite} out of range 1..7')
+        self._v[kite - 1] = max(0, self._v[kite - 1] - strength)
+        self._moment += 1
+
+    def decay(self) -> None:
+        """An unrenewed commitment weakens. This is why it is a state."""
+        self._v = [max(0, e - 1) for e in self._v]
+        self._moment += 1
+
+    # ── reading it ───────────────────────────────────────────────────────
+    @property
+    def moment(self) -> int:
+        return self._moment
+
+    @property
+    def vector(self) -> List[int]:
+        return list(self._v)
+
+    def read(self, moment: Optional[int] = None) -> Reading:
+        """Sample the state. The stamp is what makes comparison honest."""
+        code = 1
+        for p, e in zip(Intention.PRIMES, self._v):
+            code *= p ** e
+        return Reading(code, self._moment if moment is None else moment,
+                       self.holder)
+
+    @property
+    def code(self) -> int:
+        return self.read().code
+
+    @property
+    def kites(self) -> List[int]:
+        return [i + 1 for i, e in enumerate(self._v) if e > 0]
 
     def __repr__(self) -> str:
-        return f'Intention({self.kites} = {self.code})'
-
-
-class Handoff:
-    """The Eye's readiness. It hands off when CORRECT.
-
-    NEITHER SIDE IS POLLED. Each hands off on its own, when the waiting is
-    full. What differs is what fills it:
-
-        MindsEye     ready when CORRECT    external referent
-        PapersHands  ready when HAPPY      internal, and legitimately so
-        archive      when USEFUL           the commit to identity
-
-    An earlier version of this class banned every affective field on the
-    grounds that satisfaction is wireheadable. That was over-guarding, and it
-    removed a mechanism the architecture needs.
-
-    WHY HAPPY IS SAFE HERE — it is a question of ORDER, not vocabulary.
-
-    Satisfaction is dangerous when it decides TRUTH: a system that lowers its
-    bar until it is satisfied has optimised the gauge instead of the task. It
-    is harmless when it decides SUFFICIENCY, downstream of a truth someone else
-    already settled. The Hands never see `correct_set` and cannot write it;
-    they choose only among continuations the Eye has certified. So a happy
-    Hands cannot manufacture a correct answer — it can only stop emitting.
-
-    The property is structural rather than lexical: NEITHER SIDE HOLDS BOTH
-    HALVES. The Eye determines correct and may not deviate. Intention may
-    deviate and may not redefine correct.
-
-    TEMPERATURE decides WHEN the handoff is available.
-
-    Borrowed from combinatorial game theory, where it was developed largely on
-    Go endgames. Temperature measures how much is at stake between the best and
-    worst legal continuation:
-
-        HOT   large spread   the move is forced; deviation loses
-        COLD  small spread   slack exists; deviation costs little
-
-    So intention's freedom is not granted, it is MEASURED. Being intentionally
-    wrong is only available in a cold position, which is exactly how a strong
-    player talks: you play the forced sequence, and style lives in the endgame
-    where the swing is small.
-
-    The same holds in a sentence. Where type reduction forces the continuation
-    there is nothing to choose. Where several continuations are grammatical,
-    intention picks — and may pick the unexpected one, at a cost bounded by
-    how little separates them.
-    """
-
-    __slots__ = ('options', 'correct_set', 'tolerance')
-
-    def __init__(self,
-                 options: Dict[str, float],
-                 correct_set: Sequence[str],
-                 tolerance: float = 0.0) -> None:
-        """
-        :param options:     legal continuation -> its value. The maths supplies
-                            this; it is not a preference ranking.
-        :param correct_set: which continuations are correct. The EXTERNAL
-                            referent — supplied from outside, never derived
-                            from `options`, because a criterion the system
-                            computes is a criterion the system can move.
-        :param tolerance:   how much value intention may spend to deviate.
-        """
-        self.options = dict(options)
-        self.correct_set = tuple(correct_set)
-        self.tolerance = tolerance
-
-    @property
-    def temperature(self) -> float:
-        """Spread between the best and worst legal continuation."""
-        if len(self.options) < 2:
-            return 0.0
-        vals = self.options.values()
-        return max(vals) - min(vals)
-
-    @property
-    def is_correct(self) -> bool:
-        """Predicate, not a mood. Every correct option must be available."""
-        return bool(self.correct_set) and all(
-            c in self.options for c in self.correct_set)
-
-    def may_hand_off(self) -> bool:
-        """Intention takes over only once correctness is settled AND cold."""
-        return self.is_correct and self.temperature <= self.tolerance
-
-    def deviations(self) -> List[str]:
-        """Legal-but-not-correct options intention may choose.
-
-        Empty in a hot position: there is no affordable way to be wrong when
-        the swing exceeds what intention is permitted to spend.
-        """
-        if not self.may_hand_off():
-            return []
-        return [k for k in self.options if k not in self.correct_set]
-
-    def budget(self) -> float:
-        """What intention has left to spend after the position's own spread."""
-        return max(0.0, self.tolerance - self.temperature)
-
-
-class Satisfaction:
-    """The Hands' readiness. HAPPY is delta-S = 0.
-
-    HAPPY IS NOT A MOOD, AND NOT A BUFFER FILLING.
-
-    An earlier version of this class made happiness a count — emit three things
-    and stop. That was a bad reading twice over: it made satisfaction internal
-    (and so, in principle, wireheadable) and it made stopping arbitrary.
-
-    The right definition is geometric. The Hands are happy when THE GEOMETRY HAS
-    MADE THE PATH OF LEAST ACTION AVAILABLE — when no admissible variation of
-    the emitted path lowers its action:
-
-        delta S = 0
-
-    Which resolves the safety question completely, and not by vocabulary. A
-    stationary point cannot be moved by wanting it to be somewhere else. You
-    can lower a bar; you cannot lower a derivative. So `happy` is exactly as
-    external as `correct` — one is a predicate on the type structure, the other
-    a predicate on the geometry — and neither side can reach the other's.
-
-    UNAVOIDABLE, which is the load-bearing word.
-
-    The least-action path is not chosen. In a path integral the classical path
-    is the one that survives while contributions away from it cancel by
-    interference. The Hands do not select it; everything else destructively
-    interferes and it is what is left.
-
-    Worth stating plainly because it constrains the engine: cancellation needs
-    COMPLEX amplitudes. With real positive weights (Euclidean, `e^-S`) paths can
-    only add, and nothing is ever unavoidable — only more probable. The model
-    already carries the complex structure as J_red + i*J_blue, one amplitude per
-    shell. sigma_self currently discards the phase by taking a power ratio, and
-    the phase is precisely what makes a stationary path inevitable rather than
-    merely likely.
-
-    ARCHIVAL is a separate threshold. Alignment is not the same as worth
-    keeping: the Hands stop when the geometries line up, and only what proves
-    USEFUL is committed to the long path. Everything else was intention, and
-    intention is collectable by design.
-
-    THE MECHANISM IS ALIGNMENT, NOT ABSENCE OF MOTION.
-
-    "Stationary" undersells it. The condition is not that there is nowhere to
-    go — it is that THE WORK EVERY GEOMETRY GIVES FOR FREE ALL LINES UP AT
-    ONCE. Each channel offers a downhill direction; normally they disagree, and
-    reconciling them costs work. Happy is when they agree, so the step is free
-    because nothing opposes it.
-
-    That is the STATIONARY PHASE condition, and it is why the least-action path
-    is unavoidable rather than merely preferred. In the integral over paths, the
-    contributions away from stationarity rotate rapidly and cancel; at
-    stationarity the neighbouring phases align and add coherently. The path is
-    not selected — it is what survives when everything else interferes with
-    itself.
-
-    Measured as the coherence of the per-geometry gradients:
-
-        coherence = |sum_k exp(i*theta_k)| / N
-
-        1.0   every geometry pointing the same way — free work, unavoidable
-        0.0   perfectly opposed — no free work exists in any direction
-    """
-
-    __slots__ = ('_path', 'threshold', 'useful_at')
-
-    def __init__(self, threshold: float = 0.95, useful_at: float = 0.5) -> None:
-        """
-        :param threshold: coherence at or above which the geometries count as
-                          lined up.
-        :param useful_at: usefulness above which an emission is archived.
-        """
-        # (what, action, usefulness, gradient directions in radians)
-        self._path: List[Tuple[str, float, float, Tuple[float, ...]]] = []
-        self.threshold = threshold
-        self.useful_at = useful_at
-
-    def emit(self, what: str, action: float, usefulness: float,
-             gradients: Sequence[float] = ()) -> None:
-        """Lay one step: its action cost and the direction each geometry pulls."""
-        self._path.append((what, action, usefulness, tuple(gradients)))
-
-    @property
-    def action(self) -> float:
-        """S — additive along the path, because it is a logarithm.
-
-        Matches the linguistics primer exactly:
-        S(sentence) = sum_i -log2 P(w_i | w_1..w_i-1) = -log2 P(sentence)
-        """
-        return sum(a for (_, a, _, _) in self._path)
-
-    def coherence(self) -> float:
-        """How completely the free downhill work lines up, in [0, 1].
-
-        The resultant of unit vectors — 1 when every geometry points the same
-        way, 0 when they cancel. Identical in form to the order parameter of a
-        set of coupled phases, and to the stationary-phase condition, because
-        they are the same statement.
-        """
-        if not self._path:
-            return 0.0
-        thetas = self._path[-1][3]
-        if not thetas:
-            return 0.0
-        re = sum(math.cos(t) for t in thetas)
-        im = sum(math.sin(t) for t in thetas)
-        return math.hypot(re, im) / len(thetas)
-
-    def free_work(self) -> float:
-        """The aligned component — what the geometry gives without being pushed."""
-        if not self._path:
-            return 0.0
-        return self.coherence() * abs(self._path[-1][1])
-
-    @property
-    def is_happy(self) -> bool:
-        """Ready when the geometries line up. Not when it feels like enough.
-
-        Nothing here can be lowered by wanting it lower: a coherence is a
-        property of the directions, and the directions are the geometry's.
-        """
-        return self.coherence() >= self.threshold
-
-    def opposed(self) -> bool:
-        """The geometries actively cancel — no free work in any direction."""
-        return bool(self._path) and self.coherence() < 0.5
-
-    def archivable(self) -> List[Tuple[str, float]]:
-        """What proved USEFUL — the subset that earns a place on the long path.
-
-        Distinct from `is_happy` on purpose. A path can reach a perfectly
-        stationary point having emitted nothing worth keeping. Stopping and
-        archiving are different questions and get different thresholds.
-        """
-        return [(w, u) for (w, _, u, _) in self._path if u >= self.useful_at]
-
-    def discarded(self) -> List[Tuple[str, float]]:
-        """Emitted, stationary, and not worth keeping. Collected, not lost."""
-        return [(w, u) for (w, _, u, _) in self._path if u < self.useful_at]
-
-    @property
-    def emitted(self) -> List[Tuple[str, float, float, Tuple[float, ...]]]:
-        return list(self._path)
+        return f'Intention({self._v} = {self.code} @t{self._moment})'
 
 
 class ShortPath(_Bound):
