@@ -63,3 +63,7 @@ totp_test
 
 # Local Claude Code overrides — machine state, not source
 .claude/settings.local.json
+
+# compiled harness binaries
+PtolC/rotary_rerun
+sizecheck

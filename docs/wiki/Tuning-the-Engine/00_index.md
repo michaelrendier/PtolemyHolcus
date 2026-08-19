@@ -9,8 +9,8 @@ The VAPMIP *Tuning the Engine* engineering log, one page per phase.
 > page, then add its row below. The split exists to keep a phase readable without
 > loading 244 KB.
 
-*28 entries — Phases 1–27. Phases 1–23 authored by Claude Sonnet 4.6;
-24–27 by Claude Opus 5.*
+*29 entries — Phases 1–28. Phases 1–23 authored by Claude Sonnet 4.6;
+24–28 by Claude Opus 5.*
 
 ---
 
@@ -47,6 +47,7 @@ The VAPMIP *Tuning the Engine* engineering log, one page per phase.
 | [25_the_box_kite_debugger_and_the_negative_space.md](25_the_box_kite_debugger_and_the_negative_space.md) | 25 | 2026-08-05 | The Box-Kite Debugger, and the Negative Space (+ addendum) |
 | [26_the_degeneracy_audit_five_dead_statistics.md](26_the_degeneracy_audit_five_dead_statistics.md) | 26 | 2026-08-08 | The Degeneracy Audit: Five Dead Statistics |
 | [27_the_apex_path_and_the_half_radius_circle.md](27_the_apex_path_and_the_half_radius_circle.md) | 27 | 2026-08-13 | The Apex Path, the Half-Radius Circle, and Where Text Actually Lives |
+| [28_the_three_faces_the_fermat_ladder_and_executable_structure.md](28_the_three_faces_the_fermat_ladder_and_executable_structure.md) | 28 | 2026-08-18 | The Three Faces, the Fermat Ladder, and Structure as a Fast Path |
 
 ---
 
