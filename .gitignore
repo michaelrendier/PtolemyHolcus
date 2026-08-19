@@ -67,3 +67,7 @@ totp_test
 # compiled harness binaries
 PtolC/rotary_rerun
 sizecheck
+
+# the shell binary — build with: cc -O2 -std=c99 -o ptol ptol_shell.c -lm
+PtolC/ptol
+PtolC/ptol_asan
