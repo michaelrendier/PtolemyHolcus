@@ -62,6 +62,15 @@ int ptol_cepstrum_gate(const char *text)
  */
 static char *ptol_curl_fetch(const char *url)
 {
+    /* SECURITY: choke-point guard, defense in depth — every current caller
+     * already percent-encodes its query before building `url`, but this
+     * function is what actually reaches popen(), so it refuses a raw
+     * single quote itself too rather than trusting every future caller to
+     * remember. Same pattern PtolC/main.c's read_url() already uses. */
+    for (const char *p = url; *p; p++) {
+        if (*p == '\'') return NULL;
+    }
+
     char cmd[4096];
     snprintf(cmd, sizeof(cmd),
              "curl -sL --max-time 12 "
@@ -179,11 +188,28 @@ int ptol_search_wiki(const char *query, PtolSearchResult *result)
 {
     if (!query || !result) return 0;
 
-    /* Replace spaces with underscores for Wikipedia slug */
+    /* Wikipedia slug, then percent-encode — SECURITY: this used to pass
+     * query through with only spaces->underscores, no encoding, straight
+     * into a popen() shell command via ptol_curl_fetch(). A query
+     * containing a single quote (reachable unsanitized from the daemon's
+     * "SEARCH <query>" socket command, PtolC/daemon.c) broke out of the
+     * quoted URL argument and injected arbitrary shell commands. Fixed by
+     * applying the SAME percent-encoding discipline ptol_search_arxiv()
+     * already uses above — alnum/-_.  pass through, everything else
+     * (including ' ; $ ` | &) becomes %XX, so no shell metacharacter can
+     * reach the command line unescaped. Found and fixed 2026-08-25. */
     char slug[256];
     size_t j = 0;
-    for (size_t i = 0; query[i] && j < sizeof(slug) - 1; i++) {
-        slug[j++] = (query[i] == ' ') ? '_' : query[i];
+    for (size_t i = 0; query[i] && j < sizeof(slug) - 3; i++) {
+        if (query[i] == ' ') {
+            slug[j++] = '_';
+        } else if (isalnum((unsigned char)query[i]) ||
+                   query[i] == '-' || query[i] == '_' || query[i] == '.') {
+            slug[j++] = query[i];
+        } else {
+            snprintf(slug + j, 4, "%%%02X", (unsigned char)query[i]);
+            j += 3;
+        }
     }
     slug[j] = '\0';
 
