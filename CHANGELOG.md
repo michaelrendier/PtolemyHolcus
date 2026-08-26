@@ -1,6 +1,72 @@
 # Changelog
 
-All releases are preserved. Major versions: v2.0.0 = English out of the box; v3.0 = Tuning the TDI (three systems timed); v4.0 = Ahura Mazda — Wankel rotary engine, dual-thread Mind's Eye, information conservation.
+All releases are preserved. Major versions: v2.0.0 = English out of the box; v3.0 = Tuning the TDI (three systems timed); v4.0 = Ahura Mazda — Wankel rotary engine, dual-thread Mind's Eye, information conservation; v5.0 = Box Kite — real WordNet-relation context hashing, a Monad that uses the harness, relational English.
+
+---
+
+## v5.0.0 "Box Kite" — 2026-08-25
+
+**Real WordNet-relation context hashing — a Monad that uses the harness, speaking in relational English**
+
+The engine gains a second, independent kind of context signal alongside the
+Wankel rotary/A-matrix system: `context_vector`, built from 19 real WordNet
+relation methods per synset (hypernyms, hyponyms, meronyms, antonyms,
+derivationally-related forms, etc.), log-compressed (`compress_count`) and
+hashed into an addressable `context_addr`. Where the Wankel engine produces
+a sedenion at the coupling event, this hashes a synset's actual position in
+WordNet's relation graph — a different, complementary signal.
+
+### `wordnet_boxkite.py` — CLOSED, emergence-tested
+
+`context_vector` / `compress_count` / `context_addr` / `compare_context` /
+`context_distance` / `find_collisions`. Closed on a real positive result: an
+abstract "pile of something" concept (bank.n.01/03/05's shared relation
+shape) was detected via context-vector collision at 4/15 exact matches
+against a random-word control base rate of 5.5% (p≈0.01) — the algorithm
+finds structure in the relation graph that isn't visible by inspection.
+Full test and the emergence framing: `docs/wiki/Tuning-the-Engine/31_*.md`.
+
+### `sentence_context.py` — sentence-level context, no new hashing layer
+
+`build_sentence_context` combines per-word `context_vector`s into a
+sentence `root_vector` by plain componentwise sum — the same additive
+identity (PW3, `spiral_is_additive`) already proven in
+`SedenionFactoralRelativity`, reapplied rather than reinvented. Order-blind
+by construction; a known, named limit, not an oversight.
+
+### `ptolemy_monad.py` / `harness.py` / `rotary_boxkite_window.py` — the Monad that USES the harness
+
+First Monad built to actually drive `Harness.present()` rather than merely
+attach to it. `PtolemyMonad` runs Mind's Eye and Paper's Hands as real
+daemon threads on queues, negotiating a response; `MonadKVM` is stubbed
+(no PyQt6 wiring yet); `infer_direction` reads the dominant WordNet
+relation off a sentence's box-kite to pick the reply's grammatical frame.
+`rotary_boxkite_window.py` is the curses chat front-end (`ptol -w`),
+wired to `RotaryBoxKiteMonad` in `rotary_rerun_boxkite_monad.py`. First
+live run produced fluent, contextually-grounded output traced to real
+WordNet graph edges, not generation from nowhere — "relational English":
+the milestone is that the pipeline demonstrably extracts and speaks real
+relational depth, independent of any one output's surface resonance.
+
+### `PtolC/` — box-kite snapshot as a C struct, real wordnet-dev C API
+
+`boxkite_bin.h` (shared struct: `word[32]`, `pos`, `synset_offset`,
+`vector[19]`, `depth_weight`) / `dump_boxkite_bin.c` / `wntest.c` — a
+snapshot-able `.bin` dataset built against the real WordNet C library
+(`wordnet-dev`), not the NLTK dump, mirrored against
+`wordnet_boxkite.export_pickle()`'s Python-side shape. `make boxkite-bin`
+target added. `ptol.c` gains `-w`/`--boxkite` (execs the curses window via
+the ValaQuenta venv Python — fixed a real numpy/pandas ABI crash from the
+system Python's site-packages). `~/.local/bin/ptol` corrected from a plain
+copy to a symlink, so `-g`/`-w`'s `/proc/self/exe`-relative GUI-script
+resolution works from the installed location.
+
+### Checkpoint
+
+`wordnet_boxkite` full pickle export: 147,306 entries
+(`PTorrent/bin_archive/dirty/monad_boxkite_wordnet.pkl`). C struct dump:
+154,725 entries (`PtolC/c_monad_wordnet.bin`, gitignored — field state,
+never committed).
 
 ---
 

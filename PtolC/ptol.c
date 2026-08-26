@@ -23,6 +23,11 @@
  *   -b [dir]   write PPM bitmap paper (field — 16 scalar amplitudes)
  *   -H [dir]   write HTML paper (SVG + bitmap + text shadow, all together)
  *   -i <file>  read image as prompt (via ImageMagick — geometry-first OCR)
+ *   -w         launch the RotaryBoxKiteMonad curses window (2026-08-25
+ *   --boxkite  session): WordNet-composter + sedenion box-kite algebra,
+ *              Eye reads / Hands writes-and-renders, direction inference,
+ *              template sentence assembly. Same brain-exec's-the-face
+ *              pattern as -g/--gui, different Monad underneath.
  *
  * Papers are written to dir (default: current directory).
  * Filename: ptol_<prompt_slug>_<timestamp>.{svg,ppm,html}
@@ -741,6 +746,47 @@ int main(int argc, char *argv[])
             py_argv[na] = NULL;
             execv("/usr/bin/python3", py_argv);
             perror("ptol -g: exec holcus_window.py failed");
+            return 127;
+        } else if (strcmp(argv[arg0], "-w") == 0 || strcmp(argv[arg0], "--boxkite") == 0) {
+            /* Launch rotary_boxkite_window.py — the 2026-08-25 session's
+             * Monad (WordNet box-kite composter + sedenion box-kite algebra,
+             * Eye-reads/Hands-writes-and-renders, direction inference,
+             * template sentence assembly) behind the same pre-harness
+             * curses chrome as -g/--gui. Same exec pattern, same brain-
+             * exec's-the-face contract — this is NOT a rewrite of -g, it
+             * points at a different, newer Python window because the
+             * underlying Monad it drives is different (RotaryBoxKiteMonad,
+             * not monad.py's Engine). A from-scratch pure-C port of the
+             * WordNet-relational composter and the box-kite algebra is
+             * real future work, not done here — see PtolC/wntest.c for a
+             * verified proof that wordnet-dev's C API (findtheinfo_ds /
+             * read_synset / ptrtyp[]) reproduces wordnet_boxkite.py's
+             * context_vector exactly (checked against bank.n.01: HYPERPTR=1,
+             * HYPOPTR=2, matching {'hypernyms':1,'hyponyms':2}) — the
+             * groundwork for that future port, not the port itself. */
+            char gui[512];
+            snprintf(gui, sizeof(gui), "%s/../rotary_boxkite_window.py", g_ptol_dir);
+            /* RotaryBoxKiteMonad needs nltk+wordnet. /usr/bin/python3's
+             * site-packages has a broken numpy/pandas/sklearn ABI
+             * (pandas._libs compiled against a different numpy than what's
+             * installed) that nltk's import chain drags in via
+             * chunk->tag->classify->scikitlearn->sklearn->pandas — confirmed
+             * 2026-08-25, a real crash, not this program's bug. The
+             * ValaQuenta venv has been the clean, verified interpreter for
+             * every wordnet_boxkite.py/sentence_context.py run all session;
+             * use it here explicitly rather than relying on system python3. */
+            char venv_py[512];
+            snprintf(venv_py, sizeof(venv_py),
+                    "%s/../../ValaQuenta/.venv/bin/python3", g_ptol_dir);
+            char *py_argv[64];
+            py_argv[0] = venv_py;
+            py_argv[1] = gui;
+            int na = 2;
+            for (int i = arg0 + 1; i < argc && na < 63; i++)
+                py_argv[na++] = argv[i];
+            py_argv[na] = NULL;
+            execv(venv_py, py_argv);
+            perror("ptol -w: exec rotary_boxkite_window.py failed (venv python)");
             return 127;
         } else {
             break;

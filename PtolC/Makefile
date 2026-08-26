@@ -20,12 +20,25 @@ PREFIX       ?= /usr/local
 MANDIR       ?= $(PREFIX)/share/man
 PTOLEMY_HOME ?= $(HOME)/.ptolemy
 
-.PHONY: all clean export corpus grammar full expand ingest install install-man install-systemd link ptol
+.PHONY: all clean export corpus grammar full expand ingest install install-man install-systemd link ptol boxkite-bin
 
 all: $(TARGET) ptol
 
 ptol: ptol.c ptolemy.h
 	$(CC) $(CFLAGS) -o ptol ptol.c $(LDFLAGS)
+
+# ── Box-kite snapshot dataset — real WordNet C API (wordnet-dev), not the
+# NLTK corpus dump above. See boxkite_bin.h for the shared struct shape
+# (mirrored in wordnet_boxkite.py's export_pickle() on the Python side).
+# Usage: make boxkite-bin   (needs `apt install wordnet wordnet-dev`)
+dump_boxkite_bin: dump_boxkite_bin.c boxkite_bin.h
+	$(CC) $(CFLAGS) -o dump_boxkite_bin dump_boxkite_bin.c -lwordnet -lm
+
+boxkite-bin: dump_boxkite_bin
+	WNSEARCHDIR=/usr/share/wordnet ./dump_boxkite_bin c_monad_wordnet.bin
+
+wntest: wntest.c
+	$(CC) $(CFLAGS) -o wntest wntest.c -lwordnet
 
 # ── Corpus: download WordNet + ingest → monad_wordnet.bin ───────────────────
 # Requires Python 3 + NLTK.  Run by user — not automated.
@@ -117,6 +130,7 @@ install-man:
 # ── Remove build artifacts ────────────────────────────────────────────────────
 clean:
 	rm -f $(OBJS) $(TARGET) tools/checkpoint_expand
+	rm -f ptol dump_boxkite_bin wntest
 	rm -f ~/.ptolemy/logs/ptolemy_test_*.log 2>/dev/null || true
 
 # ── Dependencies ────────────────────────────────────────────────────────────
