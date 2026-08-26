@@ -1842,3 +1842,21 @@ Not yet done — noted here rather than built without checking whether Cody
 wants it ported as-is or re-derived against the address-centric model
 first (same caution as the Error-Check-Engine entry above: formulas
 derived against one σ-mechanism don't transfer for free to another).
+
+---
+
+## TODO — `ptol.c` needs a 'me' reference anchor (2026-08-25, deferred by Cody)
+
+Cody, explicitly deferred: *"ptol.c needs a 'me' reference anchor...doesn't
+need to go in now, but it'll help with present, past and future participles
+etc...and the user is 'you' in general...just 'point of view
+literarily'...literally...so it can be sure to speak in the proper tense
+and whatnot."* Not built — noted here per this project's discipline of
+recording a real pending task rather than letting it evaporate. When
+picked up: the Monad needs a fixed first-person anchor (itself = "me"/"I")
+distinct from the second-person anchor (the human = "you"), so tense and
+participle selection (present/past/future) can be resolved against a real
+point-of-view frame rather than left ambiguous — likely sits alongside
+`infer_direction`/the sentence-assembly templates in
+`rotary_rerun_boxkite_monad.py` or `ptolemy_monad.py`, not `ptol.c` itself
+(the C layer dispatches to those, per the `-w` flag's existing design).
