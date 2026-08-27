@@ -1,0 +1,236 @@
+CONTEXT PRIMER — The Constructor / Context Box-Kites / Semantic Prime Hash Retooling
+Date: 2026-08-27
+Session: Claude Sonnet 5
+Repos touched: VAPMIP, ValaQuenta, SedenionFactoralRelativity, Ainulindale,
+PtolemyDesktop, PTorrent, ContextPlease
+Backward: CONTEXT_PRIMER_2026-08-24_CURSES_UI_BOXKITE_HARNESS.txt (the
+box-kite context design, first specified)
+Forward: [next session — either (a) full sentence assembly on top of
+constructor.py's word-selection, or (b) the semantic-prime-hash retooling
+described in Part 4, not yet started]
+
+========================================================================
+WHY THIS PRIMER EXISTS
+========================================================================
+
+A very long single session ran from closing out the box-kite/pile-concept
+work, through building a full ValaQuenta "Scale" engine (PW13-16 in
+SedenionFactoralRelativity), a security audit that found and fixed a real
+command-injection bug, two new real .bin files (grammar, phonetic), and a
+first working "constructor" that selects words by two simultaneous
+constraints. Everything below was built or read from real code this
+session, not asserted. Cody asked for this primer specifically to resume
+on three threads: the constructor, the context box-kites, and "semantic
+prime hash retooling" (Part 4 — named as a real next step, NOT yet built).
+
+========================================================================
+PART 1 — CONTEXT BOX-KITES (status: DONE, closed, foundation for everything else)
+========================================================================
+
+--- 1.1 wordnet_boxkite.py (VAPMIP/wordnet_boxkite.py) ---
+
+`context_vector(synset)` — 19 real WordNet relation methods (hypernyms,
+hyponyms, member/substance/part holonyms+meronyms, attributes,
+entailments, causes, also_sees, verb_groups, similar_tos, topic/region/
+usage_domains), each entry = `compress_count(len(relation_targets))` =
+`round(log2(n+1))`. `context_code(synset)` = product of `CONTEXT_PRIMES[i]
+** vector[i]` — a genuine multiplicative prime-hash address, PW3
+(`spiral_is_additive`) applied: `address(p*q) = address(p) + address(q)`.
+
+CLOSED on a real positive result (Phase 31 wiki,
+docs/wiki/Tuning-the-Engine/31_wordnet_box_kites_and_the_pile_concept_emergence.md):
+an abstract "pile of something" concept (bank.n.01/03/05's shared relation
+shape) detected via context-vector collision, 4/15 exact matches vs a
+5.5% random-control base rate (p~=0.01).
+
+--- 1.2 sentence_context.py (VAPMIP/sentence_context.py) ---
+
+`build_sentence_context(text)` -> `SentenceBoxKite(leaves, skipped,
+root_vector, root_code)`. `root_vector` = componentwise SUM of each
+resolvable word's `context_vector` — NOT a new hash layer, explicitly
+confirmed as PW3 reapplied (Cody's own correction mid-build: "the combined
+context doesn't necessarily need additional prime hashing"). WSD is a
+STUB: first WordNet sense only (`wn.synsets(word)[0]`), a real, named,
+not-yet-fixed limitation.
+
+`neighborhood_corpus(leaves, max_per_relation=5, exclude_input=True)` —
+candidate pool for RESPONSE construction: every synset directly related
+(any of the 19 methods) to an input leaf.
+
+`nearest_synsets(target_vector, corpus, top_k=5)` — ranks candidates by
+plain L1 distance (`sum(abs(a-b))`) between target_vector and each
+candidate's own `context_vector`. THIS IS THE PIECE PART 4 IS ABOUT —
+it does NOT use any Scale-engine fold machinery, just raw Manhattan
+distance on compress_count-scaled integers.
+
+--- 1.3 monad_grammar.bin (built this session) ---
+
+`VAPMIP/tools/make_grammar_bin.py` -> `VAPMIP/PtolC/monad_grammar.bin`
+(gitignored, real, 104,796 bytes). 5,952 irregular exceptions
+(`/usr/share/wordnet/{noun,verb,adj,adv}.exc`, WordNet's own data) + 25
+regular suffix rules (`nltk`'s `MORPHOLOGICAL_SUBSTITUTIONS`). Two-tier
+hierarchy: exceptions checked first (closed, memorized), rules second
+(open, generative) — the same hierarchy `morphy()` already runs silently
+inside every `wn.synsets()` call. Round-trip verified exact.
+
+--- 1.4 monad_phonetic.bin (built this session) ---
+
+`VAPMIP/tools/make_phonetic_bin.py` -> `VAPMIP/PtolC/monad_phonetic.bin`
+(gitignored, real, 3,715,616 bytes). 123,455 words from NLTK's `cmudict`
+(CMU Pronouncing Dictionary — General American pronunciation specifically,
+NOT British/other varieties, a real honest scope limit). ARPAbet phonemes
+carry real stress digits (0/1/2); multiple pronunciations kept per word
+(heteronyms: `record`/`record`, `present`/`present`, genuinely different
+stress = genuinely different meaning/POS). `thaumaturge` is NOT covered —
+a real, honest coverage gap (cmudict is ~123k common words, not
+exhaustive).
+
+`syllable_count(pron)` / `primary_stress_index(pron)` are DERIVED from the
+stress digits, not separately stored — same "don't store what you can
+recompute" discipline as `compress_count`.
+
+========================================================================
+PART 2 — THE SCALE ENGINE (built this session, ValaQuenta + SFR)
+========================================================================
+
+Full engine protocol: `ValaQuenta/modules/scale/` (maths.py/tools.py, 10
+equations) + `SedenionFactoralRelativity/engine/lineage.py` PW13-15 (same
+results, independent port) + wiki pages in both repos + Ainulindale
+wiki/95. Core functions actually used by the constructor:
+
+`mobius_fold(Z, Z0)` = `Gamma = (Z-Z0)/(Z+Z0)` — the Smith-chart fold.
+`scale_factor(Z, Z0)` = `|dGamma/dZ|` — PROVEN exact power law far from
+anchor, `scale_factor ~ 2|Z0|/r^2`, confirmed by direct computation
+converging to exactly 2.0 as r->infinity (Z0=1).
+
+Also this session: PW16 `unit_lineage_decompose` (units as a geometry, no
+numeric content, EQUATION_INDEX narrowing a dimension signature to
+candidate physical laws — the literal analogue of context_vector
+narrowing a word to candidate synsets). `SedenionFactoralRelativity`
+engine now 44/44.
+
+Real, load-bearing finding from testing five candidate ring-pairs: `J_red`
++ `J_blue` = 1.0000000000 EXACTLY (checked to 10 decimals) — degenerate,
+one number wearing two labels, NOT two independent rings, because
+`cam_encode` returns a unit-normalized vector split into non-overlapping
+halves. Caught, not hidden. `σ_RB[k] = ψ[k]·ψ[k^4]` was later shown to
+equal `(r_k^2/2)·sin(2*theta_k)` EXACTLY (verified to 3.6e-15) where
+`(r_k,theta_k)` is the polar decomposition of the XOR-4-paired components
+— meaning σ_RB is scale^2 times a pure angular term, not scale-invariant
+itself.
+
+========================================================================
+PART 3 — constructor.py (VAPMIP/constructor.py) — THE TEST FLIGHT
+========================================================================
+
+Built and pushed this session (commit c16cbf8). Two ORTHOGONAL constraints
+folded together to rank real candidate words:
+
+  ring1 (semantic axis) = L1 distance from a sentence's root_vector to a
+    candidate's context_vector (nearest_synsets' own distance metric)
+  ring2 (scale axis) = |candidate_syllable_count - target_syllables|
+    (monad_phonetic.bin)
+
+Folded via `mobius_fold(Z, Z0)` after MIN-MAX NORMALISING both axes to
+[0,1] within each query's own retrieved candidate pool (NOT a fixed
+global anchor — that was bug #1, see below), then ranked by `|Gamma|`
+ascending.
+
+--- 3.1 Two real bugs caught and fixed in the same pass, not hidden ---
+
+BUG 1: raw semantic_dist (typically 11-17, a sum across 19
+compress_count dimensions) completely swamped raw syllable-gap (typically
+0-3) against a fixed, hand-picked `Z0=(3.0,1.5)` — two different
+`target_syllables` values produced the IDENTICAL word ranking. Caught by
+literally comparing two runs side by side, not assumed correct. FIXED by
+min-max normalising both axes to [0,1] within the pool actually retrieved
+for that specific query, then folding against a fixed `Z0=(0.5,0.5)` (the
+centre of the normalised square).
+
+BUG 2 (found immediately after fixing #1): for a NARROW candidate pool
+(short/common seed words -> mostly 1-2 syllable candidates), normalising
+across only 2 distinct raw values collapses many candidates to identical
+`|Gamma|` scores. Which TIED word prints first then depends on Python's
+hash-randomized set iteration order between process runs, NOT on the
+actual target — confirmed by running the identical query twice and
+getting different top-8 words both times. RESOLVED (not eliminated as a
+class) by widening retrieval (`pool_cap=10`, deeper `neighborhood_corpus`)
+so more syllable diversity survives — confirmed the ranking then
+genuinely reorders between `target_syllables=1.0` and `=4.0`
+("interpret"/"edifice" vs "building" swapping rank #1).
+
+--- 3.2 Honest current scope ---
+
+WORD SELECTION ONLY. Does NOT yet:
+  - inflect selected words via monad_grammar.bin
+  - order words into a real dependency structure (a pathway_decomposition-
+    shaped DAG was proposed, not built)
+  - apply the punctuation/tone construction layer (designed conceptually
+    this session — the "conversation? Confuse(ed)! Then Speak..."
+    re-punctuation example, invisible Unicode tonal markers via the
+    U+E0000-E007F Tag block or variation selectors, whitespace-type
+    semantics — NONE of this has any code yet)
+  - handle any language other than English (WordNet + cmudict +
+    MORPHOLOGICAL_SUBSTITUTIONS are all English-specific; explicit TODO
+    in VAPMIP/TODO.md, Cody: "we have got to more rigorously test the
+    inter-language stuff...(not now)")
+
+`Z0=(0.5,0.5)` (post-normalisation) is a reasonable, symmetric choice but
+NOT independently validated against real usage data the way e.g. the
+Flesch-Kincaid formula itself is.
+
+========================================================================
+PART 4 — SEMANTIC PRIME HASH RETOOLING (named as a next step, NOT started)
+========================================================================
+
+Cody, verbatim, mid-session: *"catching the semantic prime hash up to the
+maths won't be hard once we have the constructor designed."* Now that the
+constructor exists (Part 3), this is unblocked but genuinely not begun.
+
+The precise gap: `nearest_synsets()` (Part 1.2) compares two
+`context_vector`s with plain L1 distance — it has NEVER been routed
+through any of the Scale engine's own machinery (`mobius_fold`,
+`scale_factor`, `cross_ratio`). The semantic/prime-hash system and the
+Scale engine were built in completely separate parts of this session and
+have not been unified.
+
+What "retooling" concretely would mean, to be designed next session, not
+assumed here:
+  - Does treating two context_vectors' comparison AS a two-ring Smith-
+    chart fold (rather than raw L1 distance) change anything real? This
+    needs to be TESTED the way every other candidate ring-pair this
+    session was tested (real data, check for degeneracy, check the
+    |Gamma| spread isn't saturated/uniform) — not assumed to be an
+    improvement just because it reuses more of the engine.
+  - `context_code` (the multiplicative prime-hash address itself,
+    `context_vector`'s product-of-primes-to-powers form) has a natural
+    LOG structure (`log(context_code) = sum(vector[i] * log(prime[i]))`)
+    that has never been connected to the Scale engine's own "folding IS
+    log-then-bound" master identity (`Gamma = tanh(half*ln(Z/Z0))`,
+    verified exact this session). This is a real, unexplored, possibly
+    load-bearing connection — the semantic hash may ALREADY be halfway
+    to Scale-engine-native without anyone having noticed, or it may not
+    connect cleanly at all. Genuinely open, not pre-decided.
+  - Whatever the outcome, apply the SAME degeneracy discipline that
+    caught J_red/J_blue and the constructor's two bugs before trusting
+    any specific retooling as real progress.
+
+========================================================================
+QUICK-START FOR THE NEXT SESSION
+========================================================================
+
+1. Read this primer in full before touching code.
+2. `VAPMIP/constructor.py` is real, tested, committed (c16cbf8) — run it
+   directly: `.venv/bin/python3 constructor.py` (must use the
+   ValaQuenta .venv python — system python3 has a real numpy/pandas ABI
+   break, documented earlier this session).
+3. If continuing the constructor: next real piece is inflection +
+   ordering (Part 3.2), not more ring-pair tuning.
+4. If starting Part 4 (semantic hash retooling): start by reading
+   `sentence_context.nearest_synsets` and `wordnet_boxkite.context_code`
+   side by side with `ValaQuenta/modules/scale/maths.py`'s
+   `fold_is_log_tanh`/`mobius_fold` — the log-structure connection above
+   is the first real thing to test, not the only one.
+5. Standing deferred TODOs, still open, recorded in VAPMIP/TODO.md:
+   ptol.c 'me'-anchor (first-person reference point), inter-language
+   testing (both explicitly "not now" per Cody).
