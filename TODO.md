@@ -1860,3 +1860,23 @@ point-of-view frame rather than left ambiguous — likely sits alongside
 `infer_direction`/the sentence-assembly templates in
 `rotary_rerun_boxkite_monad.py` or `ptolemy_monad.py`, not `ptol.c` itself
 (the C layer dispatches to those, per the `-w` flag's existing design).
+
+---
+
+## TODO — rigorously test the inter-language assumptions (2026-08-27, deferred by Cody)
+
+Cody, explicit: *"we have got to more rigorously test the inter-language
+stuff...(not now)."* Not built, not started — noted here per the same
+discipline as the entry above. Context: the phonetic/grammar face built
+this session (`monad_grammar.bin`, `monad_phonetic.bin`, WordNet itself)
+is entirely English-specific by construction (cmudict is General American
+pronunciation; `MORPHOLOGICAL_SUBSTITUTIONS`/the `.exc` tables are
+English-only). Real cross-linguistic phenomena flagged during design but
+never tested against: Spanish accent marks as literal orthography (stress
+encoded in the spelling itself); Mandarin tone as a definitionally
+distinguishing feature (five tones on "ma" are five different lexical
+items, not one letter plus decoration); Hebrew niqqud / Arabic tashkil as
+an optional vowel-marking layer present in some registers and absent in
+others. None of this is implied or half-solved by the English-only work
+already done — it needs its own data sources and design pass when picked
+back up, not an extension of the current tables.
