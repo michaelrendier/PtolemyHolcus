@@ -35,7 +35,8 @@ always emits the pickle.
 | `psi_prev` | `list[float]` (16) | last ψ window state |
 | `word_count` | `int` | total words ever learned |
 | `correction_mask` | `dict[int, dict[int, float]]` | sparse edge-suppression overlay ∈ `(0, 1]`; absent = 1.0 (unmodified). Applied in `a_propagate`. "The field remembers what it unlearned." |
-| `_provenance` | `list[dict]` *(merged bins only)* | per factor: `{bin, weight, sha256, vocab, edges}` |
+| `_provenance` | `list[dict]` *(merged bins only)* | per factor: `{bin, weight, sha256, project, vocab, edges}` |
+| `_bootstrap` | `dict` *(bootstrap builds only)* | `{kind: "project-fluent", spec_version: int, project_corpus_sha256: str, project_first: true, project_factors: list[str]}` — see §8 |
 | `_built` | `str` *(merged bins only)* | ISO timestamp |
 
 A single-corpus bin written by `Engine.save_session` has the same keys minus
@@ -98,7 +99,27 @@ The merged `monad.bin` supplies the `eng:` sections (β / E / A CSR / word
 table); the WordNet and phonetic sections come from `c_monad_wordnet.bin` and
 `monad_phonetic.bin` unchanged.
 
-## 6. Size and distribution
+## 6. Bootstrap marker and build safety
+
+`bootstrap.py` is the canonical build. It ingests the ContextPlease
+engineering corpus FIRST (the project factor bins: `monad_engineering.bin`,
+`monad_war.bin`, `monad_repos.bin`, folded before all others), then general
+language, then any `--add` user trees. The output carries `_bootstrap`
+(above). `_provenance[i].project` is `true` for the project + user factors.
+
+**Safety.** Before overwriting `~/.ptolemy/monad.bin`, the build reads any
+existing `_bootstrap`:
+- missing / `kind != "project-fluent"` / different `spec_version` → **refuse**
+  (exit 2); the user must pass `--override`, which copies the old file to
+  `monad.bin.bak-<ts>` first.
+- same `kind` + `spec_version` → refresh in place.
+
+**C side.** `PtolC/monad_guard.sh <candidate> <installed>` does the
+equivalent for `monad3_c.bin`: compares the `MONAD3C` magic + version stamp,
+refuses a mismatched overwrite unless `PTOL_MONAD_OVERRIDE=1` (which backs
+up first). The ptol.c build calls this before installing the store.
+
+## 7. Size and distribution
 
 The merged pickle is ~66 MB and grows with the corpus. GitHub **release
 assets** allow 2 GB, so `monad.bin` ships as a release asset directly. The
@@ -107,10 +128,11 @@ and the *builder*, and let each user rebuild `monad.bin` on-box from whatever
 corpus subset they point it at. Factor bins (`monad_*.bin`, each ≤ 36 MB here)
 are the intermediate rebuild artifacts and can also be shipped individually.
 
-## 7. Reproduce
+## 8. Reproduce
 
 ```
-# from corpuses (ContextPlease/claude/monad_bin/ + hist_prime + repo prose):
+python3 bootstrap.py            # canonical: project corpus first, then general language
+# or, step by step, from corpuses (ContextPlease/claude/monad_bin/ + hist_prime + repo prose):
 python3 corpus_strip.py  > corpus_all.txt          # primers + TODOs → prose
 python3 corpus_repos.py --ingest                   # all repo wiki/README prose → monad_repos.bin
 python3 ingest.py                                  # corpus_all.txt → monad_engineering.bin

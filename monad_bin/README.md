@@ -17,11 +17,44 @@ complementary to the `ptol` binary release. The `ptol` release keeps its
 version (**5.1** unless a significant maths upgrade lands, then 5.2);
 `monad.bin` versions independently.
 
-## Build it fresh (preferred — "everyone starts from the same scratch")
+## Build it — `bootstrap.py` (the canonical, project-first path)
 
-`monad.bin` is a **union of factor bins**, each built by corpus ingestion.
-Because every word address is deterministic, the union is order-independent
-and byte-reproducible: the same factor set always yields the same `monad.bin`.
+**Every Monad starts PROJECT FLUENT.** `bootstrap.py` always ingests the
+ContextPlease engineering corpus first — the primers, the TODOs, and every
+repo's wiki / README / docs prose (*the entire engineering structure*) — and
+*then* folds in general language and any user additions. The result speaks
+about its own functionality, in both code-shape and English, before it has
+learned anything else. This is baked into first-time creation: no matter who
+builds it, they start from the same project-fluent algorithm.
+
+```
+python3 bootstrap.py                 # project-fluent build (project corpus + general language)
+python3 bootstrap.py --project-only  # the ContextPlease engineering corpus ONLY
+python3 bootstrap.py --add DIR ...   # also ingest user prose trees (repeatable)
+python3 bootstrap.py --pack          # also produce PtolC/monad3_c.bin for ptol.c
+python3 bootstrap.py --override      # replace an existing bin of a DIFFERENT structure
+```
+
+Corpuses live in `ContextPlease/claude/monad_bin/corpus/` (set `MONAD_CORPUS_ALL`
+to point elsewhere). The result carries a `_bootstrap` marker
+`{kind: "project-fluent", spec_version: N, project_corpus_sha256, project_factors}`.
+
+### Safety + override
+
+Before writing `~/.ptolemy/monad.bin`, `bootstrap.py` inspects any existing
+file. A bin **not** produced by this bootstrap (no marker / wrong `kind` /
+different `spec_version`) is **left untouched** — the build refuses and tells
+you to pass `--override`. `--override` backs the old file up to
+`monad.bin.bak-<timestamp>` first, then writes. A compatible bin is refreshed
+in place. The C-side equivalent is `PtolC/monad_guard.sh` (honours
+`PTOL_MONAD_OVERRIDE=1`), called by the ptol.c build before it installs a new
+`monad3_c.bin`.
+
+## The lower-level builder (`build_monad_bin.py`)
+
+`bootstrap.py` calls this; use it directly to inspect / merge a fixed factor set.
+Because every word address is deterministic, the union is order-independent and
+byte-reproducible: the same factor set always yields the same `monad.bin`.
 
 ```
 python3 build_monad_bin.py test      # load each factor bin standalone, stats + smoke

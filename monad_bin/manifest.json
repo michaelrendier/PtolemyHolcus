@@ -1,77 +1,116 @@
 {
-  "generated": "2026-08-29T11:23:31",
-  "target": "monad.bin",
-  "note": "monad.bin = union(factor bins). Vocabulary AND knowledge store. Every word address is deterministic (Horner\u2192prime\u2192\u03b3), so the union is order-independent and reproducible. Rebuild on-box: python3 build_monad_bin.py merge",
+  "generated": "2026-08-29T14:52:13",
+  "bootstrap": {
+    "kind": "project-fluent",
+    "spec_version": 1,
+    "project_corpus_sha256": "883211deabeac6b9545441f93a997b53036a1c28c505df90f75e5043afabb875",
+    "project_first": true,
+    "project_factors": [
+      "monad_engineering.bin",
+      "monad_war.bin",
+      "monad_repos.bin"
+    ]
+  },
   "factors": [
+    {
+      "bin": "monad_engineering.bin",
+      "weight": 1.2,
+      "sha256": "cf1dd46caf0f3a565b7d78e238e1259a332ac3ce645f78f83dc0ae398e4b2f66",
+      "project": true,
+      "vocab": 20677,
+      "edges": 185424,
+      "beta_mean": 0.04744792331706856,
+      "beta_gt_half": 797
+    },
+    {
+      "bin": "monad_war.bin",
+      "weight": 1.2,
+      "sha256": "22c85b99a68a60b3d4a1313e5daf6122013197faf33ad6a0449c9eee426cc39e",
+      "project": true,
+      "vocab": 3006,
+      "edges": 12162,
+      "beta_mean": 0.040524221674463276,
+      "beta_gt_half": 87
+    },
+    {
+      "bin": "monad_repos.bin",
+      "weight": 1.0,
+      "sha256": "7612944528c6f03b818f2833f69b2eca3777f1fd74abe640a74a5d76933a1816",
+      "project": true,
+      "vocab": 68203,
+      "edges": 864728,
+      "beta_mean": 0.05682897727526879,
+      "beta_gt_half": 3330
+    },
     {
       "bin": "monad_english.bin",
       "weight": 1.0,
       "sha256": "e896a07e0090e671036b9f856a1ada9c582ca2b2cdf5404542d6afe161d2a3b3",
+      "project": false,
       "vocab": 164283,
-      "edges": 2248064
+      "edges": 2248064,
+      "beta_mean": 0.052608335925868985,
+      "beta_gt_half": 7568
     },
     {
       "bin": "monad_foundations.bin",
       "weight": 1.0,
       "sha256": "4206313d7c3bed4628f9471fa7f912bd5f8579d89e7c31a12287811d3d9b0063",
+      "project": false,
       "vocab": 5712,
-      "edges": 29806
+      "edges": 29806,
+      "beta_mean": 0.03069933529320385,
+      "beta_gt_half": 128
     },
     {
       "bin": "monad_meaning.bin",
       "weight": 1.0,
       "sha256": "75514cb17469fa94d47044296ea0b6cadecbde9e23bfee3edfc8485ea68c7505",
+      "project": false,
       "vocab": 1066,
-      "edges": 3280
+      "edges": 3280,
+      "beta_mean": 0.010984415746078134,
+      "beta_gt_half": 8
     },
     {
       "bin": "monad_mathematics.bin",
       "weight": 1.0,
       "sha256": "7f1f05510caac70117e36f72519a6effb022912d20398ed1da8326cea5618148",
+      "project": false,
       "vocab": 56451,
-      "edges": 460282
+      "edges": 460282,
+      "beta_mean": 0.03794881358853403,
+      "beta_gt_half": 1852
     },
     {
       "bin": "monad_physics.bin",
       "weight": 1.0,
       "sha256": "39ab6f2eaad7f627f965b9a341e2ab7ed9a1fb997d5580d75ada1f1c6eb69f03",
+      "project": false,
       "vocab": 58003,
-      "edges": 599146
+      "edges": 599146,
+      "beta_mean": 0.04820822836945223,
+      "beta_gt_half": 2449
     },
     {
       "bin": "monad_python.bin",
       "weight": 1.0,
       "sha256": "339f177c23b06ce7b237a3d1836f805c160d5d207e9ce0936ef31b85a3526194",
+      "project": false,
       "vocab": 25541,
-      "edges": 361932
+      "edges": 361932,
+      "beta_mean": 0.06586417206116905,
+      "beta_gt_half": 1485
     },
     {
       "bin": "monad_c.bin",
       "weight": 1.0,
       "sha256": "fe95125253737683dacffe3c94c81b224c1569ffb3f18db1f0f8a081998f8afb",
+      "project": false,
       "vocab": 8189,
-      "edges": 91526
-    },
-    {
-      "bin": "monad_engineering.bin",
-      "weight": 1.2,
-      "sha256": "cf1dd46caf0f3a565b7d78e238e1259a332ac3ce645f78f83dc0ae398e4b2f66",
-      "vocab": 20677,
-      "edges": 185424
-    },
-    {
-      "bin": "monad_war.bin",
-      "weight": 1.2,
-      "sha256": "237ed5ce8949bb1a9db9c36802cf624215284dc558dbdba2f05f3a3fbf2fedb5",
-      "vocab": 3006,
-      "edges": 12162
-    },
-    {
-      "bin": "monad_repos.bin",
-      "weight": 1.0,
-      "sha256": "0bb680ef86abe0afd8a6801d999763d2bcc526780cbf19c640c5c8ce9075f452",
-      "vocab": 68121,
-      "edges": 864062
+      "edges": 91526,
+      "beta_mean": 0.06728755088582039,
+      "beta_gt_half": 471
     }
   ]
 }
