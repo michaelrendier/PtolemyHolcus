@@ -4,6 +4,159 @@ All releases are preserved. Major versions: v2.0.0 = English out of the box; v3.
 
 ---
 
+## v5.1.0 "One File" — 2026-08-27 (in progress)
+
+**The three language centers merged into one mmap-able file; `ptol.c` gains a
+direct C reader for it; the semantic prime hash retooled; the Mind's Eye
+gains the recursive repass.**
+
+### The combined store
+
+- `monad_english_io.py` — `read`/`write` (atomic) / `deepen` (max-merge,
+  never renormalise) / `hear` (universal intake, `ECHO_CAP=5` on self-loop)
+  / `neighbors` / `basin` (IDF-corrected Newton-basin pool, content-word
+  gate).
+- `monad_combine.py` — `combine()` merges `c_monad_wordnet.bin` +
+  `monad_phonetic.bin` + `monad_english.bin` → `monad3.bin` (pickle) and
+  `monad3_c.bin` + `monad3c.h` (mmap-able, fixed-offset, packed: one
+  bsearch on a sorted `WordRec` table → indices into all three stores; the
+  co-occurrence matrix in CSR). Mind's-eye `rehearse()` (flat held loop,
+  not feedback). `checkpoint()` / `dirty_chunks()` (16-node / 15-edge
+  sedenion frames) — owned by the sedenion window.
+- `context_hash_v2.py` — the semantic prime hash retooled (primer Part 4):
+  ω/Ω split (18 relations squarefree presence, hyponyms the one Ω channel),
+  `log_code` working chart, Gaussian unit from the phonetic origin,
+  `gamma_radial` fold against the "everything fires once" anchor. Round-trip
+  exact (4000/4000), PW3 error 3.5e-15.
+- `context_pruner.py` — `coherent()` (curved unit-sedenion perspective
+  test, not a flat rotation) / `prune()` (schema extractor). Re-detected
+  the Phase 31 pile-concept via a second route (`bank.n.01↔bank.n.09` =
+  SAME).
+- `constructor.py` — rewired: `radical_distance` ring1 (gcd → additive),
+  `gamma_radial` ring2, input↔output conjugate scale (narrative ⟂
+  dissertational), co-occurrence basin + `topic=` in the pool.
+- `ptolemy_monad.py` — `MindsEyeRepass` + `_eye_repass`: the sedenion
+  window's **recursive** repass (16-word frames, 15-edge spanning tree per
+  frame, step +1 per word, e0 per frame owns no edge; recursion factor =
+  number of frames). Not the fractal repass. Runs above the one-shot
+  selection, guides deepening (affix → modifier → clause by step), reports
+  coverage explicitly.
+- `rotary_rerun_boxkite_monad.py` — the `ptol -w` Monad now runs the v5.1
+  pipeline: loads `monad_combine.read()` at init (resident), selects via
+  `constructor` (radical distance + `gamma_radial` + conjugate scale +
+  co-occurrence basin) with `nearest_synsets` kept as the PACE fallback,
+  `context_pruner.prune()` collapses perspective-redundant foci (schema
+  extraction, redundancy margin kept ≥ 3), `MindsEyeRepass` runs, and the
+  response is `hear()`d into the store while in Hands. `checkpoint()` on
+  the Monad; `rotary_boxkite_window.main()` calls it on window close — the
+  sedenion window carries the write.
+- `rotary_boxkite_window.py` — artifacts panel gains **per-section live
+  toggles** (`/art`, `/art all`, `/art none`, `/art <name>`) independent of
+  the coarse `/diag` level; each section shows iff (toggle ON) AND
+  (diag ≥ its min). New sections surfaced: `selector`, `decompose` (the
+  pruner's schema groups), `repass` (Mind's Eye coverage). Toggles
+  propagate to the next frame — no new input needed. HELP panel documents
+  all nine sections and the two-gate rule.
+
+### `PtolC/ptol.c` — reads `monad3_c.bin` directly (additive, first increment)
+
+**ADDED**, nothing removed:
+- `#include "monad3c.h"`; `monad3_open()` mmaps `monad3_c.bin` next to the
+  binary at startup (absent → silently stays on the `ptol_layer.py` path).
+- `monad3_lookup(word, out[3], *degree)` — lowercased bsearch on the
+  `WordRec` table → `{eng_idx, wn_idx, phon_idx}` + co-occurrence
+  out-degree. Zero copy, zero alloc.
+- `-M <word>` diagnostic flag — prints the cross-store tuple + the WordNet
+  `vec19`; verifies the wiring end to end. Confirmed against the Python
+  `read_c`: `bank` → eng 22193 / wn 11248 / phon 7536 / degree 89.
+
+**NOT yet done** (next increments): `get_monad_words()` still shells out to
+`ptol_layer.py` — replacing it needs the Python selection pipeline
+(`radical_distance` / `gamma_radial` / basin / pruner) ported to C. The
+`ptol_layer.py` shell-out will be removed *with a CHANGELOG pointer* once
+the C path is verified against it.
+
+Docs: `docs/wiki/Tuning-the-Engine/34_*.md`,
+`docs/wiki/Tuning-the-Engine/_chain_of_custody_2026-08-27.md`.
+
+### ADD / SCALE / SIGN — the tier-0 floor as an importable primitive
+
+**ADDED**, nothing removed:
+- `add_scale_sign.py` (new) — the shared primitive the `generational-lineage`
+  skill §1 pointed at but never carried. `classify(OpSpec)` runs the §3
+  four-question test; `describe(name)` classifies a bare name via a
+  known-spec table; `root_of(name)` / the roll-down table walk any DERIVED
+  operation past REFLECT/DILATE down to the **one** tier-0 root it rests on
+  (ADD, SCALE or SIGN). `AFF1` names the structure
+  `Aff(1,ℝ) = ADD ⋊ (SCALE × SIGN) = (fold count) ⋊ (size × direction)`,
+  bracket `[SCALE, ADD] = ADD`. `FINDINGS` folds in the recent decomposition
+  paths (primes = SIGN recursed over the prior-primes pathway; factorial =
+  the multiplicative integral; `e` = quantization; folds not steps).
+- `engines/e10_generational_lineage.py` — new self-checked relation **R9**
+  `r_add_scale_sign_floor`: measures the sedenion ZD gain spectrum
+  (`{0, 1, √2}` — two identities free, one irrational price) and confirms
+  every non-commuting unit pair disagrees by a pure sign flip (SIGN = one
+  bit). 9/9 relations hold. New module fn `decompose_operation(name, **spec)`
+  delegates to `add_scale_sign.describe`. Re-exported through
+  `generational_lineage_engine.py`.
+- `SedenionFactoralRelativity/engine/lineage.py` — new `root_irreducible(op)`
+  (walks `decompose()` past its immediate parent to the tier-0 root, with a
+  `root_path`), `ROOT_OF` table, `AFF1` constant; `decompose()` now also
+  returns `root`. Re-exported from `engine/__init__.py`. The existing 40-entry
+  `TIERS` table and `decompose()` §3 test are otherwise unchanged.
+
+Docs: `ValaQuenta/wiki/add_scale_sign.md` (new), linked from
+`ValaQuenta/wiki/00_index.md`.
+
+### The Sieve IS the generational lineage — Fibonacci under factoring waves
+
+**ADDED**, nothing removed. Cody: *"the Sieve IS Generational Lineage ...
+fibonacci under factoring waves ... the list of primes is the list of
+decompositional order, the ordinal values."* Confirmed
+(`.claude/scratchpad/2026-08-27_sieve-is-lineage/`, 7/7):
+
+- `engines/e10_generational_lineage.py` — three new self-checked relations
+  (**R10** `r_sieve_is_lineage`: `generation(n) = π(spf(n))` exactly, one
+  forward sweep of `π(√N)` passes, no backtracking — *the stability is
+  because it is one pass per prime, not a fixed-point iteration*; **R11**
+  `r_sieve_two_term_recurrence`: Legendre `φ(x,a)=φ(x,a−1)−φ(x/pₐ,a−1)` is
+  Fibonacci's 2-term shape with a SCALE-shifted second term, closed form
+  `Σ μ(d)⌊x/d⌋` = ADD∘SIGN∘SCALE; **R12** `r_sieve_ordering`: `generation =
+  π(spf)` holds only for the ordinal order, which also minimises generation
+  entropy — a Riemann-ζ weight order `ln p/√p` finds the same primes but
+  scrambles the generations). 12/12 relations hold. New module fn
+  `sieve_lineage(N, order='ordinal'|'zeta'|'descending')`, re-exported through
+  the shim.
+- `SedenionFactoralRelativity/engine/lineage.py` — `sieve_lineage()` and
+  `sieve_recurrence()` (same semantics; the recurrence trace + Möbius closed
+  form + the ADD/SCALE/SIGN reading). Re-exported from `engine/__init__.py`.
+- `SedenionFactoralRelativity/engine/bio.py` (**new, STUB**) — the biological
+  factoral tower: `TOWER_LEVELS` (knot 𝕊/16 → molecule T₃₂ → DNA T₆₄ →
+  protein T₁₂₈ → genome T₂₅₆, nested doublings), `molecular_decomposition` /
+  `dna_decomposition` / `protein_folding_decomposition` /
+  `genome_decomposition` / `tower()`. Every entry point raises
+  `NotImplementedError` or, with `plan_only=True`, returns the intended
+  decomposition path. **Structural decomposition only — no functional,
+  physiological or medical inference.** Re-exported from `engine/__init__.py`.
+
+Docs: `SedenionFactoralRelativity/wiki/Sedenion-Factoral-Relativity.md`
+(sieve + roll-down + bio-tower sections), `ValaQuenta/wiki/add_scale_sign.md`
+§5.
+
+**NEXT (Cody's "then"):** design the algorithmic decompositional analysis
+tool. Sharpened spec (2026-08-27): it is **not** a number-theory tool and does
+not touch `factor_lineage` / `sieve_lineage`. It is: *N imaginary processes →
+each maps to a pure-imaginary unit in a CD algebra → compose in that algebra's
+product (order kept) → the output is `Re(Π)`, one real scalar.* `A = ℍ`
+represents Vigenère (3 imaginary + 1 real: plaintext, key, period, wrap);
+`A = 𝕆` represents Enigma (rotor stepping is state-dependent — the double-step
+anomaly is an associativity failure, so it lives at the `𝕆→𝕊` boundary). The
+box-kite instance of this tool is the **Pencil HyperString**
+(`ValaQuenta/wiki/pencil_hyperstring.md`): `N = 7` pencil stations, `A = 𝕊`,
+`Re(Π) = H` the conserved scalar, wind speed `w` the reconstruction knob.
+
+---
+
 ## v5.0.0 "Box Kite" — 2026-08-25
 
 **Real WordNet-relation context hashing — a Monad that uses the harness, speaking in relational English**

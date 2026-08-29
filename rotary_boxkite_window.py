@@ -41,6 +41,7 @@ import curses
 import os
 import sys
 import textwrap
+from typing import Optional
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -58,6 +59,10 @@ HELP_LINES = [
     "commands:",
     " /help       this panel",
     " /diag <n>   diag level 0-3",
+    " /art        list sections",
+    " /art <name> toggle 1 on/off",
+    " /art all    all on",
+    " /art none   all off",
     " /clear      clear chat",
     " /quit       quit",
     "",
@@ -68,13 +73,28 @@ HELP_LINES = [
     " ^L clear chat",
     " Up/Down scroll",
     "",
-    "diagnostic levels:",
+    "diag LEVEL (coarse):",
     " 0  response only",
-    " 1  + direction",
-    " 2  + sigma/",
-    "    trochoid/struts",
-    " 3  + root context",
-    "    + Eye/Hands log",
+    " 1  + selector",
+    " 2  + sigma/trochoid/",
+    "    struts/decompose/",
+    "    repass",
+    " 3  + root ctx/",
+    "    candidates",
+    "",
+    "artifact SECTIONS",
+    "(toggle live, /art):",
+    " direction  (>=0)",
+    " selector   (>=1)",
+    " sigma      (>=2)",
+    " trochoid   (>=2)",
+    " struts     (>=2)",
+    " decompose  (>=2)",
+    " repass     (>=2)",
+    " root_ctx   (>=3)",
+    " candidates (>=3)",
+    "shows iff toggle ON",
+    " AND diag >= its min.",
 ]
 
 # ── Colour pairs ─────────────────────────────────────────────────────────
@@ -120,11 +140,31 @@ class Msg:
 
 
 class Artifacts:
-    """Real fields off the last Encounter — gated by diagnostic level, not
-    truncated by it: the data is always computed, only DISPLAY is gated."""
+    """Real fields off the last Encounter. Two independent gates, both
+    LIVE (re-read every render): the diagnostic LEVEL (0-3, coarse) and
+    per-SECTION on/off toggles. Data is always computed; only DISPLAY is
+    gated -- turning a section off, or dropping diag level, takes effect
+    on the next frame, no new input required.
+
+    Each section carries its minimum diag level; a section shows iff
+    (its toggle is on) AND (diag_level >= its minimum)."""
+
+    # name -> (label, minimum diag level)
+    SECTIONS = [
+        ('direction',  ('direction',   0)),
+        ('selector',   ('selector',    1)),
+        ('sigma',      ('sigma',       2)),
+        ('trochoid',   ('trochoid',    2)),
+        ('struts',     ('struts',      2)),
+        ('decompose',  ('decompose',   2)),   # pruned schema groups
+        ('repass',     ('repass',      2)),   # Mind's Eye coverage
+        ('root_ctx',   ('root ctx',    3)),
+        ('candidates', ('candidates',  3)),
+    ]
 
     def __init__(self):
         self.direction = '—'
+        self.selector = '—'
         self.sigma_in = self.sigma_out = 0.0
         self.trochoid_in = self.trochoid_out = 0.0
         self.lit_in: list = []
@@ -132,9 +172,24 @@ class Artifacts:
         self.shared: list = []
         self.root_nonzero: dict = {}
         self.words_out: list = []
+        self.pruned: dict = {}
+        self.repass: dict = {}
+        # per-section toggles — all on by default
+        self.enabled = {name: True for name, _ in self.SECTIONS}
+
+    def toggle(self, name: str) -> Optional[bool]:
+        """Flip one section. Returns its new state, or None if unknown."""
+        if name not in self.enabled:
+            return None
+        self.enabled[name] = not self.enabled[name]
+        return self.enabled[name]
+
+    def off_sections(self) -> list:
+        return [n for n in self.enabled if not self.enabled[n]]
 
     def update(self, enc: Encounter) -> None:
         self.direction = enc.direction
+        self.selector = getattr(enc, 'selector', '—')
         self.sigma_in = enc.snapshot['sigma_self']
         self.sigma_out = enc.snapshot_out['sigma_self']
         self.trochoid_in = enc.snapshot['trochoid_loss']
@@ -145,27 +200,51 @@ class Artifacts:
         self.root_nonzero = {RELATION_METHODS[i]: c
                              for i, c in enumerate(enc.root_vector) if c}
         self.words_out = enc.words_out
+        self.pruned = getattr(enc, 'pruned', {}) or {}
+        self.repass = getattr(enc, 'repass', {}) or {}
+
+    def _show(self, name: str, diag_level: int) -> bool:
+        lvl = dict((n, m) for n, (_, m) in self.SECTIONS)[name]
+        return self.enabled.get(name, True) and diag_level >= lvl
 
     def lines(self, width: int, diag_level: int) -> list:
         w = max(4, width - 2)
-        out = [f"direction:", f" {self.direction}"]
-        if diag_level >= 2:
-            out.append("─" * w)
-            out.append(f"sigma in:  {self.sigma_in:.4f}")
-            out.append(f"sigma out: {self.sigma_out:.4f}")
-            out.append(f"troch in:  {self.trochoid_in:.4f}")
-            out.append(f"troch out: {self.trochoid_out:.4f}")
-            out.append(f"struts in:")
-            out.append(f" {self.lit_in}")
-            out.append(f"struts out:")
-            out.append(f" {self.lit_out}")
-            out.append(f"shared:")
-            out.append(f" {self.shared}")
-        if diag_level >= 3:
-            out.append("─" * w)
-            out.append("root ctx:")
+        out: list = []
+        if self._show('direction', diag_level):
+            out += ["direction:", f" {self.direction}"]
+        if self._show('selector', diag_level):
+            out += ["selector:", f" {self.selector}"]
+        if self._show('sigma', diag_level):
+            out += ["─" * w,
+                    f"sigma in:  {self.sigma_in:.4f}",
+                    f"sigma out: {self.sigma_out:.4f}"]
+        if self._show('trochoid', diag_level):
+            out += [f"troch in:  {self.trochoid_in:.4f}",
+                    f"troch out: {self.trochoid_out:.4f}"]
+        if self._show('struts', diag_level):
+            out += ["struts in:", f" {self.lit_in}",
+                    "struts out:", f" {self.lit_out}",
+                    "shared:", f" {self.shared}"]
+        if self._show('decompose', diag_level):
+            out += ["─" * w, "decompose:",
+                    f" kept {self.pruned.get('kept', '—')}"
+                    f" / dropped {self.pruned.get('dropped', '—')}"]
+            for g in self.pruned.get('groups', []):
+                if len(g) > 1:
+                    out.append(f" {' + '.join(g)}"[:w])
+        if self._show('repass', diag_level):
+            cov = self.repass.get('coverage', {})
+            out += ["repass:",
+                    f" {cov.get('passes', '—')} passes /"
+                    f" {cov.get('frames', '—')} frames",
+                    f" complete={cov.get('complete', '—')}"]
+            if cov.get('unrefined'):
+                out.append(f" bare: {cov['unrefined']}"[:w])
+        if self._show('root_ctx', diag_level):
+            out += ["─" * w, "root ctx:"]
             for k, v in self.root_nonzero.items():
                 out.append(f" {k}={v}"[:w])
+        if self._show('candidates', diag_level):
             out.append("candidates:")
             for cw in self.words_out:
                 out.append(f" {cw}"[:w])
@@ -373,6 +452,32 @@ class RotaryBoxKiteWindow:
             self.chat_scroll = 0
             return
 
+        if text.startswith('/art'):
+            arg = text[len('/art'):].strip().lower()
+            if not arg:
+                on  = [n for n in self.artifacts.enabled if self.artifacts.enabled[n]]
+                off = self.artifacts.off_sections()
+                self.chat.append(Msg('status', f"artifacts ON:  {', '.join(on) or '(none)'}"))
+                self.chat.append(Msg('status', f"artifacts OFF: {', '.join(off) or '(none)'}"))
+            elif arg in ('all', 'on'):
+                for n in self.artifacts.enabled:
+                    self.artifacts.enabled[n] = True
+                self.chat.append(Msg('status', "all artifact sections ON"))
+            elif arg in ('none', 'off'):
+                for n in self.artifacts.enabled:
+                    self.artifacts.enabled[n] = False
+                self.chat.append(Msg('status', "all artifact sections OFF"))
+            else:
+                new = self.artifacts.toggle(arg)
+                if new is None:
+                    self.chat.append(Msg('status',
+                        f"unknown section {arg!r} — /art to list"))
+                else:
+                    self.chat.append(Msg('status',
+                        f"{arg} -> {'ON' if new else 'OFF'}"))
+            self.chat_scroll = 0
+            return   # returns to run() -> _render() this frame: LIVE
+
         # Normal conversation turn — input -> output, the primary job.
         self.chat.append(Msg('you', text))
         self.chat.extend(self._monad_turn(text))
@@ -424,6 +529,17 @@ def main():
         curses.wrapper(window.run)
     except SystemExit:
         pass
+    finally:
+        # The sedenion window carries the write functionality for the
+        # combined store: persist on exit whatever hear() deepened this
+        # session. (Interval checkpointing from the render loop is a
+        # follow-up; on-exit is the guarantee.)
+        try:
+            path = monad.checkpoint()
+            if path:
+                print(f"  [combined store checkpointed -> {path}]", file=sys.stderr)
+        except Exception as exc:                       # recorded, not hidden
+            print(f"  [checkpoint failed: {exc}]", file=sys.stderr)
     print("Rotary boxkite window closed.", file=sys.stderr)
 
 

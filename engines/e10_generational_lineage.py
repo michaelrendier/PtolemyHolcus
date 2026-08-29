@@ -140,6 +140,101 @@ def sigma_rb_independent(psi: Sequence[float]) -> List[float]:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# The Sieve as the generational lineage — one pass per prime, Fibonacci-shaped
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _sieve_flags(n: int) -> List[bool]:
+    f = [True] * (n + 1)
+    f[0] = f[1] = False
+    for p in range(2, int(n ** 0.5) + 1):
+        if f[p]:
+            f[p * p::p] = [False] * len(f[p * p::p])
+    return f
+
+
+def _spf_table(n: int) -> List[int]:
+    """smallest prime factor of every k in 0..n (0 for 0 and 1)."""
+    s = [0] * (n + 1)
+    for i in range(2, n + 1):
+        if s[i] == 0:
+            for j in range(i, n + 1, i):
+                if s[j] == 0:
+                    s[j] = i
+    return s
+
+
+def _mobius_table(n: int) -> List[int]:
+    mu = [1] * (n + 1)
+    mu[0] = 0
+    flags = _sieve_flags(n)
+    for p in range(2, n + 1):
+        if not flags[p]:
+            continue
+        for j in range(p, n + 1, p):
+            mu[j] *= -1
+        for j in range(p * p, n + 1, p * p):
+            mu[j] = 0
+    return mu
+
+
+def _sieve_traced(N: int, order: Sequence[int]):
+    """Run the sieve marking multiples in `order`; record the pass index that
+    FIRST marks each k, and the count of passes that did real work."""
+    marked_on: List[object] = [None] * (N + 1)
+    working = 0
+    for pass_i, p in enumerate(order):
+        if p * p > N:
+            continue
+        working += 1
+        for k in range(p * p, N + 1, p):
+            if marked_on[k] is None:
+                marked_on[k] = pass_i
+    return marked_on, working
+
+
+def _phi(x: int, a: int, primes: Sequence[int]) -> int:
+    """Legendre's φ(x,a): count of 1..x divisible by none of the first a
+    primes. φ(x,a) = φ(x,a−1) − φ(x/pₐ, a−1); the Fibonacci-shaped recurrence."""
+    if a == 0:
+        return x
+    return _phi(x, a - 1, primes) - _phi(x // primes[a - 1], a - 1, primes)
+
+
+def sieve_lineage(N: int = 20_000, order: str = 'ordinal') -> Dict[str, object]:
+    """The Sieve read as the generational lineage of every integer ≤ N.
+
+    order = 'ordinal'   ascending prime — the canonical decomposition order,
+                        generation(n) = π(spf(n)), minimum generation entropy
+          = 'zeta'      primes by ln p/√p descending (σ=½ von-Mangoldt weight)
+          = 'descending' largest prime first (greatest-prime-factor order)
+
+    Returns the generation map, the working pass count (= π(√N) for any order),
+    and whether generation(n) == π(spf(n)) under this order.
+    """
+    spf = _spf_table(N)
+    primes = [k for k in range(2, N + 1) if spf[k] == k]
+    if order == 'zeta':
+        seq = sorted(primes, key=lambda p: math.log(p) / math.sqrt(p), reverse=True)
+    elif order == 'descending':
+        seq = sorted(primes, reverse=True)
+    else:
+        seq = sorted(primes)
+    pos = {p: i for i, p in enumerate(seq)}
+    marked_on, working = _sieve_traced(N, seq)
+    comps = [n for n in range(4, N + 1) if spf[n] != n]
+    gen_matches_spf = all(marked_on[n] == pos[spf[n]] for n in comps)
+    root_primes = sum(1 for p in primes if p * p <= N)
+    return {
+        'N': N, 'order': order, 'order_head': seq[:8],
+        'working_passes': working, 'pi_sqrt_N': root_primes,
+        'one_pass_per_prime': working == root_primes,
+        'generation_matches_pi_spf': gen_matches_spf,
+        'n_composites': len(comps),
+        'generation_of': {n: marked_on[n] for n in comps},
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # The verifying harness
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -359,11 +454,155 @@ class GenerationalLineageEngine:
             f'gcd({a},{b})={shared}=animal·mammal=LCA. "how much context" is exact: '
             f'enough to reach the ancestor, no more.')
 
+    # ── R9 — the tier-0 floor is ADD / SCALE / SIGN, measured ────────────────
+    def r_add_scale_sign_floor(self) -> None:
+        """ADD (gain 0), SCALE (gain 1), SIGN (one bit) are the whole floor:
+        the ZD gain spectrum is exactly {0, 1, √2}, and the CD sign structure
+        is binary with nothing between."""
+        sp = self.gains(16, 1, 10)                       # a sedenion ZD's L_aᵀL_a
+        spectrum = set(sp)
+        floor_ok = spectrum == {0.0, 1.0, round(math.sqrt(2), 4)}
+        # SIGN is one bit: unit products differ from their reverse only by ±1
+        flips = 0
+        checked = 0
+        for i in range(1, 16):
+            for j in range(i + 1, 16):
+                p = cd_mul(unit(16, i), unit(16, j))
+                q = cd_mul(unit(16, j), unit(16, i))
+                if p != q:
+                    checked += 1
+                    if all(abs(abs(x) - abs(y)) < 1e-12 and (x == -y or x == y)
+                           for x, y in zip(p, q)):
+                        flips += 1
+        sign_is_one_bit = checked > 0 and flips == checked
+        self._record(
+            'floor.add_scale_sign',
+            'the tier-0 floor is ADD (identity 0, gain 0), SCALE (identity 1, '
+            'gain 1) and SIGN (one bit, det ±1); Aff(1,ℝ)=ADD⋊(SCALE×SIGN), the '
+            'only non-trivial bracket [SCALE,ADD]=ADD', 0,
+            'nothing — this IS the floor (skill §1)',
+            True, floor_ok and sign_is_one_bit,
+            f'ZD gain spectrum = {sorted(spectrum)} = {{0,1,√2}}: two free '
+            f'(the identities), one irrational price. Non-commuting unit pairs '
+            f'{flips}/{checked} disagree by a pure sign flip — SIGN carries one '
+            f'bit, nothing between.')
+
+    # ── R10 — the Sieve IS the lineage: pass order = decomposition order ─────
+    def r_sieve_is_lineage(self) -> None:
+        """Cody, 2026-08-27: "the Sieve IS Generational Lineage ... the list of
+        primes is the list of decompositional order, the ordinal values."
+        Measured: composite n is first marked on the pass of prime spf(n), and
+        generation(n) = π(spf(n)) exactly. One deterministic forward sweep of
+        π(√N) passes — no iteration to a fixed point — which is why the lineage
+        decomposition is STABLE (one pass per prime, not a convergence)."""
+        N = 20_000
+        spf = _spf_table(N)
+        primes = [k for k in range(2, N + 1) if spf[k] == k]
+        pi = {p: i for i, p in enumerate(primes)}
+        marked_on, working = _sieve_traced(N, primes)
+        comps = [n for n in range(4, N + 1) if spf[n] != n]
+        gen_ok = all(marked_on[n] == pi[spf[n]] for n in comps)
+        disjoint = all(marked_on[n] is not None for n in comps)
+        root_primes = sum(1 for p in primes if p * p <= N)
+        one_pass = working == root_primes
+        self._record(
+            'lineage.sieve_is_order',
+            'the Sieve of Eratosthenes IS the generational lineage: composite n '
+            'dies on the pass of spf(n), generation(n)=π(spf(n)); one forward '
+            'sweep of π(√N) passes, no backtracking — the stability is because '
+            'it is one pass per prime, not a fixed-point iteration', 3,
+            'ADD (march the multiples) over SCALE (the p-spaced wave) gated by '
+            'SIGN (the divisibility bit)',
+            True, gen_ok and disjoint and one_pass,
+            f'gen(n)=π(spf(n)) for {len(comps)}/{len(comps)} composites ≤ {N}; '
+            f'working passes = {working} = π(√N) = {root_primes}. The ordered '
+            f'prime list is the decompositional order (the ordinal values).')
+
+    # ── R11 — Fibonacci under factoring waves: the 2-term sieve recurrence ───
+    def r_sieve_two_term_recurrence(self) -> None:
+        """Legendre: φ(x,a) = φ(x,a−1) − φ(x/pₐ, a−1). A linear TWO-TERM
+        recurrence — Fibonacci's exact shape — but the second term's argument
+        is SCALED by a prime (a factoring wave), not index-shifted by 1.
+        Closed form φ(x,a) = Σ_{d|Pₐ} μ(d)·⌊x/d⌋ = ADD ∘ SIGN ∘ SCALE."""
+        primes = [2, 3, 5, 7, 11, 13]
+        x = 30_030
+        rec_ok = True
+        for a in range(1, len(primes) + 1):
+            r = _phi(x, a, primes)
+            d = sum(1 for k in range(1, x + 1)
+                    if all(k % p for p in primes[:a]))
+            t1, t2 = _phi(x, a - 1, primes), _phi(x // primes[a - 1], a - 1, primes)
+            rec_ok &= (r == d == t1 - t2)
+        # closed form via Möbius over the squarefree divisors of P_a
+        Pa = 1
+        for p in primes:
+            Pa *= p
+        mu = _mobius_table(Pa)
+        closed = sum(mu[dd] * (x // dd) for dd in range(1, Pa + 1) if Pa % dd == 0)
+        closed_ok = closed == _phi(x, len(primes), primes)
+        self._record(
+            'lineage.sieve_is_fibonacci_wave',
+            'the sieve count obeys φ(x,a)=φ(x,a−1)−φ(x/pₐ,a−1) — Fibonacci\'s '
+            'linear 2-term shape with the 2nd term SCALE-shifted by a prime, not '
+            'index-shifted by 1; closed form Σ μ(d)⌊x/d⌋ is a superposition of '
+            'signed division waves', 3,
+            'ADD (Σ_d) ∘ SIGN (μ(d) ∈ {−1,0,+1}) ∘ SCALE (⌊x/d⌋)',
+            True, rec_ok and closed_ok,
+            f'recurrence exact for a=1..{len(primes)}; closed form '
+            f'Σ_{{d|{Pa}}} μ(d)⌊x/d⌋ = {closed} = φ(x,{len(primes)}). '
+            f'Fibonacci is the degenerate "pₐ acts as +1 shift" case.')
+
+    # ── R12 — both orderings: what the order fixes, what it does not ─────────
+    def r_sieve_ordering(self) -> None:
+        """Ordinal (ascending prime) vs Riemann-ζ weight (ln p/√p descending,
+        the σ=½ von-Mangoldt term size). The final prime set and the disjoint
+        first-mark partition are ORDER-INVARIANT; generation(n)=π(spf(n)) is
+        UNIQUE to the ordinal order, which also minimises the generation
+        entropy (pass 0 alone kills every even)."""
+        N = 20_000
+        spf = _spf_table(N)
+        primes = [k for k in range(2, N + 1) if spf[k] == k]
+        comps = [n for n in range(4, N + 1) if spf[n] != n]
+
+        def gen_matches(order):
+            pos = {p: i for i, p in enumerate(order)}
+            m, _ = _sieve_traced(N, order)
+            return all(m[n] == pos[spf[n]] for n in comps), m
+
+        asc = sorted(primes)
+        zeta = sorted(primes, key=lambda p: math.log(p) / math.sqrt(p), reverse=True)
+        asc_ok, m_asc = gen_matches(asc)
+        zeta_ok, m_zeta = gen_matches(zeta)
+        prime_set_asc = [i for i, ok in enumerate(_sieve_flags(N)) if ok] == asc
+
+        def entropy(m):
+            from collections import Counter
+            h = Counter(m[n] for n in comps)
+            tot = len(comps)
+            return -sum((c / tot) * math.log2(c / tot) for c in h.values())
+
+        h_asc, h_zeta = entropy(m_asc), entropy(m_zeta)
+        holds = asc_ok and not zeta_ok and prime_set_asc and h_asc < h_zeta
+        self._record(
+            'lineage.sieve_ordering',
+            'the prime SET and the disjoint partition are order-invariant; '
+            'generation(n)=π(spf(n)) holds ONLY for the ordinal (ascending '
+            'prime) order, which also minimises generation entropy — it is the '
+            'canonical, maximum-compression decomposition order', 3,
+            'the ordinal π is ADD-native (a count); the ζ-weight order is a '
+            'SCALE re-grading that breaks the spf identity',
+            True, holds,
+            f'ordinal: gen=π(spf) {asc_ok}, entropy {h_asc:.2f} bits · '
+            f'ζ-weight (starts {zeta[:6]}): gen=π(spf) {zeta_ok}, '
+            f'entropy {h_zeta:.2f} bits · same prime set: {prime_set_asc}.')
+
     def run(self) -> None:
         for r in (self.r_sigma_nonscalar, self.r_sigma_carries_octonion,
                   self.r_lineage_is_order_of_operations, self.r_persistence_is_octonion,
                   self.r_associator_is_168_quantised, self.r_three_xor_roles,
-                  self.r_io_share_substrate, self.r_gcd_is_lca):
+                  self.r_io_share_substrate, self.r_gcd_is_lca,
+                  self.r_add_scale_sign_floor, self.r_sieve_is_lineage,
+                  self.r_sieve_two_term_recurrence, self.r_sieve_ordering):
             r()
 
     def report(self) -> None:
@@ -399,6 +638,25 @@ class GenerationalLineageEngine:
             'kept by scalar':             1,
             'discarded (struts)':         7,
         }
+
+
+def decompose_operation(name: str, **spec) -> Dict[str, object]:
+    """Classify a named operation against ADD / SCALE / SIGN.
+
+    Thin wrapper over the shared primitive (VAPMIP/add_scale_sign.py) so the
+    lineage engine can roll any operation down to its tier-0 root. Pass the
+    four-question flags as kwargs (is_count_or_ratio, is_fixed_set,
+    changes_length, preserves_length, needs_added_constraint, order_dependent,
+    is_identity) when the name is not already in the roll-down table.
+    """
+    from add_scale_sign import describe, AFF1
+    d = describe(name, **spec)
+    return {
+        'operation': d.name, 'tier': d.tier, 'is': d.irreducible,
+        'root': d.root, 'status': d.status, 'tree': d.tree,
+        'descends_from': d.descends_from, 'notes': d.notes,
+        'aff1': AFF1['group'],
+    }
 
 
 def run(verbose: bool = True) -> Dict[str, object]:

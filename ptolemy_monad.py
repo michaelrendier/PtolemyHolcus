@@ -98,6 +98,95 @@ def infer_direction(root_vector: List[int]) -> str:
     return DIRECTION_BY_DOMINANT_RELATION.get(RELATION_METHODS[idx], 'observe')
 
 
+# ── the redundancy layer, built into the Mind's Eye ─────────────────────
+class MindsEyeRepass:
+    """The sedenion window's RECURSIVE repass -- redundancy, built into
+    the Mind's Eye.
+
+    Structure: 16-word FRAMES, a 15-edge spanning tree per frame (the
+    Recaman backward arcs), the step incremented once per word. Slot 0 of
+    each frame is e0 -- the anchor, owns no edge, the reference the arcs
+    hang off. The recursion factor is the number of frames.
+
+    This is the RECURSIVE repass (one scale), NOT the fractal one -- each
+    frame becoming a word at the next scale (sentence -> paragraph ->
+    chapter), nested self-similarly, is later.
+
+    Runs ABOVE and OUTSIDE the one-shot selection: it sees the whole draft
+    while the construction walk sees only its current slot, and
+    SIMULTANEOUSLY GUIDES construction -- each step recommends the next
+    Recaman BACKWARD move (return to an earlier word, deepen it: affix ->
+    modifier -> clause as the global step grows) rather than pushing
+    forward. Forced forward only when a frame is fully refined.
+
+    Guarantee shape: injective by construction (a slot is not re-refined
+    within one cycle); coverage is best-effort and unrefined slots are
+    REPORTED, never hidden. A second, independent view of the draft -- if
+    the selection drifts, the repass is the parallel route (mesh, not
+    star)."""
+
+    FRAME = 16
+
+    def __init__(self, slots: List[str]):
+        self.slots = list(slots)              # chosen words, reading order
+        self.visited: set = set()             # slot idxs refined this cycle
+        self.refined: Dict[int, List[str]] = {}
+        self.step = 1                         # GLOBAL Recaman step: +1/word, never resets
+        self.passes = 0
+        self._last_in_frame: Dict[int, int] = {}   # frame idx -> last refined slot
+
+    def _frames(self):
+        return [(s, min(s + self.FRAME, len(self.slots)))
+                for s in range(0, len(self.slots), self.FRAME)]
+
+    def _target(self):
+        """Earliest slot that is not its frame's e0 anchor, still bare,
+        and unvisited this cycle. (None, None) -> forced forward."""
+        for start, end in self._frames():
+            for i in range(start, end):
+                if i == start:
+                    continue                 # e0 owns no edge
+                if i not in self.visited and i not in self.refined:
+                    return i, start
+        return None, None
+
+    def guidance(self) -> Dict[str, Any]:
+        """One repass step -- the recommendation construction consumes."""
+        self.passes += 1
+        i, anchor = self._target()
+        if i is None:
+            return {'action': 'stop', 'passes': self.passes,
+                    'reason': 'every frame refined -- forced forward'}
+        fidx = anchor // self.FRAME
+        # the Recaman backward arc: from slot i to the previous refined
+        # slot in its frame, or to e0 if this is the frame's first arc
+        back = self._last_in_frame.get(fidx, anchor)
+        tier = ('affix' if self.step <= 2 else
+                'modifier' if self.step <= 5 else 'clause')
+        self.visited.add(i)
+        self._last_in_frame[fidx] = i
+        self.step += 1
+        return {'action': 'refine', 'slot': i, 'word': self.slots[i],
+                'edge': (back, i), 'anchor': self.slots[anchor],
+                'operator': tier, 'step': self.step - 1, 'frame': fidx,
+                'passes': self.passes,
+                'reason': (f'frame {fidx} arc: slot {i} ({self.slots[i]}) '
+                           f'-> {self.slots[back]}')}
+
+    def record(self, slot: int, op: str) -> None:
+        self.refined.setdefault(slot, []).append(op)
+
+    def coverage(self) -> Dict[str, Any]:
+        anchors = {start for start, _ in self._frames()}
+        bare = [self.slots[i] for i in range(len(self.slots))
+                if i not in self.refined and i not in anchors]
+        return {'refined': {self.slots[k]: v for k, v in self.refined.items()},
+                'unrefined': bare,               # bare NON-anchor slots only
+                'anchors': [self.slots[i] for i in sorted(anchors)],  # e0s, bare by design
+                'passes': self.passes, 'frames': len(self._frames()),
+                'complete': not bare}            # every edge-bearing slot refined
+
+
 # ── KVM — stub only, deliberately ────────────────────────────────────────
 
 class MonadKVM:
@@ -139,6 +228,7 @@ class MonadResponse:
     leaves_in: List[Dict[str, Any]]
     leaves_out: List[Dict[str, Any]]
     exchange_log: List[ExchangeEntry] = field(default_factory=list)
+    repass: Dict[str, Any] = field(default_factory=dict)   # Mind's Eye redundancy
 
 
 # ── the Monad ─────────────────────────────────────────────────────────────
@@ -150,7 +240,10 @@ class PtolemyMonad:
     core — never talks to a Face, an engine, or a repo's tools.py
     directly, per harness.py's own standing rule."""
 
-    MAX_ROUNDS = 3   # bounded self-talk — Eye/Hands settle or time out, never spin
+    MAX_ROUNDS = 3    # bounded self-talk — Eye/Hands settle or time out, never spin
+    # the Recaman repass is bounded per-call by slot count (see _eye_repass);
+    # the frame width is MindsEyeRepass.FRAME (= 16), the per-frame edge
+    # budget is 15.
 
     def __init__(self, harness: Optional[Any] = None):
         self.harness = harness
@@ -189,6 +282,8 @@ class PtolemyMonad:
                 reply_q.put(ExchangeEntry('eye', 'draft', self._eye_draft(payload)))
             elif kind == 'reconsider':
                 reply_q.put(ExchangeEntry('eye', 'draft', self._eye_revise(payload)))
+            elif kind == 'repass':
+                reply_q.put(ExchangeEntry('eye', 'repass', self._eye_repass(payload)))
 
     def _eye_draft(self, ctx: Dict[str, Any]) -> Dict[str, Any]:
         direction = infer_direction(ctx['root_vector'])
@@ -202,6 +297,28 @@ class PtolemyMonad:
         pool = neighborhood_corpus(ctx['leaves_in'], max_per_relation=wider)
         return {'direction': note['draft']['direction'], 'pool': pool,
                 'max_per_relation': wider}
+
+    def _eye_repass(self, note: Dict[str, Any]) -> Dict[str, Any]:
+        """Built-in: the Mind's Eye repasses its own chosen words. Runs
+        bounded guided Recaman backward steps over the selected slots and
+        returns (guidance trace, coverage report). Guidance steers the
+        deepening; the trace is the redundant second view. Actually
+        applying each nuance (inflect via monad_grammar.bin / attach a
+        modifier from the basin) is the constructor's consumer step —
+        flagged, not done here."""
+        slots = note.get('slots') or []
+        me = MindsEyeRepass(slots)
+        # can't do more refinements than slots; +frames for the per-frame
+        # 'stop' steps, +1 slack.
+        max_iters = len(slots) + (len(slots) // MindsEyeRepass.FRAME) + 2
+        trace: List[Dict[str, Any]] = []
+        for _ in range(max_iters):
+            g = me.guidance()
+            trace.append(g)
+            if g['action'] == 'stop':
+                break
+            me.record(g['slot'], g['operator'])
+        return {'guidance': trace, 'coverage': me.coverage()}
 
     # ── Paper's Hands: B_hat = R_hat^dagger at 1-sigma_self — reviews only,
     # never authors a draft, non-updateable ────────────────────────────────
@@ -274,9 +391,19 @@ class PtolemyMonad:
         response_words = [l['word'].replace('_', ' ') for l in leaves_out]
         response_text = ' '.join(response_words) if response_words else '(no candidates found)'
 
+        # Mind's Eye redundancy: repass the chosen words (Recaman backward
+        # steps) ABOVE and OUTSIDE the one-shot selection above, guiding
+        # where nuance (affix / modifier / clause) should be added.
+        reply_repass: "queue.Queue" = queue.Queue()
+        self._eye_q.put(('repass', {'slots': response_words}, reply_repass))
+        repass = reply_repass.get().payload
+        log.append(ExchangeEntry('eye', 'repass',
+                                 {'coverage': repass['coverage']}))
+
         response = MonadResponse(text=response_text, direction=self.intent,
                                  root_vector=ctx.root_vector, leaves_in=ctx.leaves,
-                                 leaves_out=leaves_out, exchange_log=log)
+                                 leaves_out=leaves_out, exchange_log=log,
+                                 repass=repass)
 
         if self.harness is not None:
             self.harness.present(response_text, kind='monad_response', center='hands')
@@ -308,10 +435,16 @@ if __name__ == '__main__':
         print(f'    leaves_out: {out_desc}')
         print(f'    exchange_log: {[(e.sender, e.kind) for e in resp.exchange_log]}')
         print(f'    response text: {resp.text!r}')
+        cov = resp.repass.get('coverage', {})
+        print(f"    mind's-eye repass: {cov.get('passes')} passes, "
+              f"refined {list(cov.get('refined', {}))}, "
+              f"unrefined {cov.get('unrefined')}, complete={cov.get('complete')}")
 
     assert monad.intent is not None
     assert all(isinstance(e, ExchangeEntry) for r in [resp] for e in r.exchange_log)
-    assert resp.exchange_log[-1].kind == 'confirm'
+    assert any(e.kind == 'confirm' for e in resp.exchange_log)   # Hands settled
+    assert resp.exchange_log[-1].kind == 'repass'                # Eye repassed last
+    assert 'coverage' in resp.repass and 'guidance' in resp.repass
 
     print('\n=== KVM — stubbed, not wired, does not raise ===')
     kvm_result = monad.kvm.watch_cursor()

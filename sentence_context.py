@@ -92,15 +92,28 @@ def build_sentence_context(text: str) -> SentenceBoxKite:
 
 def neighborhood_corpus(leaves: List[Dict[str, Any]],
                         max_per_relation: int = 5,
-                        exclude_input: bool = True) -> List[Any]:
-    """Candidate pool for RESPONSE construction: every synset directly
-    related (any of the 19 RELATION_METHODS) to an input leaf, capped per
-    relation per leaf so one hub word (many hyponyms) can't flood the pool.
+                        exclude_input: bool = True,
+                        basin_k: int = 0,
+                        basin_topic: Optional[str] = None) -> List[Any]:
+    """Candidate pool for RESPONSE construction. Two sources, merged:
+
+      1. WordNet RELATIONS — every synset directly related (any of the 19
+         RELATION_METHODS) to an input leaf, capped per relation per leaf
+         so one hub word can't flood the pool. "What is semantically
+         related."
+
+      2. The CO-OCCURRENCE BASIN (basin_k > 0) — the Newton basin from
+         monad_english_io: the words that actually get used around the
+         seed words, IDF-corrected so the function-word flood is crushed,
+         then resolved to first-sense synsets. "How people actually talk
+         around this." basin_topic loads a topic-scoped A-matrix
+         (monad_physics.bin, ...) instead of the full one -- the setting.
+
     exclude_input=True drops the leaves' own synsets — echoing the input
-    back isn't communication, it's parroting; a caller that wants the
-    input synsets included too can pass False."""
+    back is parroting, not communication."""
     pool: Dict[str, Any] = {}
     input_names = {leaf['synset'].name() for leaf in leaves}
+
     for leaf in leaves:
         s = leaf['synset']
         for method_name in RELATION_METHODS:
@@ -110,6 +123,31 @@ def neighborhood_corpus(leaves: List[Dict[str, Any]],
                 continue
             for t in targets:
                 pool[t.name()] = t
+
+    if basin_k > 0:
+        try:
+            import monad_english_io as _meio
+            me = _meio.read(_meio.topic_path(basin_topic) if basin_topic else None)
+            seeds = [leaf['word'] for leaf in leaves]
+            added = 0
+            for word in me.basin(seeds, k=basin_k * 3, idf=True):  # over-fetch, filter drops
+                w = word.strip().lower()
+                if len(w) < 3 or not w.isalpha() or w in _meio.STOPWORDS:
+                    continue
+                syn = resolve_word_synset(w)
+                if syn is None:
+                    continue
+                # `w` must be the PRIMARY lemma of its first synset -- kills
+                # acronym expansions ('an' -> associate_in_nursing, 'x' -> ten)
+                if syn.lemma_names()[0].replace('_', ' ').lower() != w:
+                    continue
+                if pool.setdefault(syn.name(), syn) is syn:
+                    added += 1
+                if added >= basin_k:
+                    break
+        except Exception:
+            pass  # no monad_english.bin available -> relations-only pool
+
     if exclude_input:
         for name in input_names:
             pool.pop(name, None)

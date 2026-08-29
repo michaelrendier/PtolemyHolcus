@@ -54,11 +54,89 @@
 #include <math.h>
 #include <time.h>
 #include <unistd.h>
+#include <ctype.h>
+#include <stdint.h>
+#include <fcntl.h>
 #include <sys/stat.h>
+#include <sys/mman.h>
 #include "ptolemy.h"
+#include "monad3c.h"    /* the three language centers, one mmap-able file */
 
 /* Directory containing the ptol binary (and ptol_layer.py). Set in main(). */
 static char g_ptol_dir[512] = ".";
+
+/* ── monad3_c.bin — the combined language store, mmap'd once ──────────────
+ *
+ * Phase 34 built monad3_c.bin (+ monad3c.h) as a fixed-offset, packed,
+ * mmap-able merge of c_monad_wordnet.bin + monad_phonetic.bin +
+ * monad_english.bin: one bsearch on the sorted WordRec table -> indices
+ * into all three stores at once, plus the co-occurrence CSR. This is the
+ * first, additive step of folding monad_combine.py into ptol.c: the
+ * store is opened and directly queryable here (see the -M flag); the
+ * get_monad_words() shell-out to ptol_layer.py is NOT yet replaced --
+ * that needs the Python selection pipeline (radical_distance /
+ * gamma_radial / basin / pruner) ported to C, the next increment.
+ */
+static const unsigned char  *g_m3     = NULL;   /* mmap base */
+static size_t                 g_m3_len = 0;
+static const Monad3cHeader   *g_m3h    = NULL;
+
+static void monad3_open(void)
+{
+    char path[600];
+    snprintf(path, sizeof(path), "%s/monad3_c.bin", g_ptol_dir);
+    int fd = open(path, O_RDONLY);
+    if (fd < 0) return;                      /* absent -> stay on ptol_layer.py */
+    struct stat st;
+    if (fstat(fd, &st) != 0 || (size_t)st.st_size < sizeof(Monad3cHeader)) {
+        close(fd); return;
+    }
+    void *m = mmap(NULL, (size_t)st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+    close(fd);
+    if (m == MAP_FAILED) return;
+    if (memcmp(m, MONAD3C_MAGIC, 8) != 0) { munmap(m, (size_t)st.st_size); return; }
+    g_m3     = (const unsigned char *)m;
+    g_m3_len = (size_t)st.st_size;
+    g_m3h    = (const Monad3cHeader *)m;
+}
+
+/* Lowercased bsearch on the WordRec table. Fills out[3] = {eng_idx,
+ * wn_idx, phon_idx} (-1 where absent) and *degree = co-occurrence
+ * out-degree (0 if no english entry). Returns 1 on hit, 0 on miss or if
+ * the store is not open. Zero copy, zero alloc. */
+static int monad3_lookup(const char *word, int32_t out[3], uint32_t *degree)
+{
+    out[0] = out[1] = out[2] = -1;
+    if (degree) *degree = 0;
+    if (!g_m3h) return 0;
+
+    char w[128];
+    size_t j = 0;
+    for (const char *p = word; *p && j < sizeof(w) - 1; p++)
+        w[j++] = (char)tolower((unsigned char)*p);
+    w[j] = '\0';
+
+    const char    *blob = (const char *)(g_m3 + g_m3h->off_wordblob);
+    const WordRec *recs = (const WordRec *)(g_m3 + g_m3h->off_wordrec);
+    long lo = 0, hi = (long)g_m3h->n_words - 1;
+    while (lo <= hi) {
+        long mid = (lo + hi) / 2;
+        int c = strcmp(blob + recs[mid].name_off, w);
+        if (c < 0)      lo = mid + 1;
+        else if (c > 0) hi = mid - 1;
+        else {
+            out[0] = recs[mid].eng_idx;
+            out[1] = recs[mid].wn_idx;
+            out[2] = recs[mid].phon_idx;
+            if (degree && out[0] >= 0) {
+                const uint32_t *rp = (const uint32_t *)(g_m3 + g_m3h->off_rowptr);
+                *degree = rp[out[0] + 1] - rp[out[0]];
+            }
+            return 1;
+        }
+    }
+    return 0;
+}
 
 static const int P[16] = {
     2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53
@@ -698,6 +776,8 @@ int main(int argc, char *argv[])
         }
     }
 
+    monad3_open();   /* mmap the combined language store if present */
+
     int    raw        = 0;
     int    do_svg     = 0;
     int    do_bmp     = 0;
@@ -732,6 +812,30 @@ int main(int argc, char *argv[])
             arg0++;
             if (arg0 >= argc) { fprintf(stderr, "ptol: -i needs <image>\n"); return 1; }
             img_input = argv[arg0++];
+        } else if (strcmp(argv[arg0], "-M") == 0) {
+            /* diagnostic: bsearch the combined store (monad3_c.bin) for a
+             * word and print its cross-store tuple. Verifies the mmap
+             * wiring end to end without touching get_monad_words yet. */
+            arg0++;
+            if (arg0 >= argc) { fprintf(stderr, "ptol: -M needs <word>\n"); return 1; }
+            if (!g_m3h) { fprintf(stderr, "ptol -M: monad3_c.bin not found next to the binary\n"); return 1; }
+            int32_t ix[3]; uint32_t deg;
+            int hit = monad3_lookup(argv[arg0], ix, &deg);
+            printf("store: %s/monad3_c.bin  (%u words, %u eng, %u wn, %u phon, %u edges)\n",
+                   g_ptol_dir, g_m3h->n_words, g_m3h->n_eng, g_m3h->n_wn,
+                   g_m3h->n_phon, g_m3h->nnz);
+            if (!hit) { printf("  %s: not found\n", argv[arg0]); return 0; }
+            printf("  %s: eng_idx=%d  wn_idx=%d  phon_idx=%d  cooccur_degree=%u\n",
+                   argv[arg0], ix[0], ix[1], ix[2], deg);
+            if (ix[1] >= 0) {
+                const unsigned char *e = g_m3 + g_m3h->off_wn + (size_t)ix[1] * 82u;
+                uint8_t pos = e[32];
+                const int16_t *vec = (const int16_t *)(e + 40);   /* word[32] pos[1] pad[3] offset[4] vec[19] */
+                printf("  wn: pos=%u  vec19=[", pos);
+                for (int q = 0; q < 19; q++) printf("%d%s", vec[q], q < 18 ? "," : "");
+                printf("]\n");
+            }
+            return 0;
         } else if (strcmp(argv[arg0], "-g") == 0 || strcmp(argv[arg0], "--gui") == 0) {
             /* Launch holcus_window.py — the brain exec's the face */
             char gui[512];

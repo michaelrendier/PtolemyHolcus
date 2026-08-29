@@ -62,8 +62,27 @@ from rotary_rerun_monad import (
 )
 from monad import cam_encode
 from sentence_context import build_sentence_context, neighborhood_corpus, nearest_synsets
-from wordnet_boxkite import RELATION_METHODS
-from ptolemy_monad import infer_direction
+from wordnet_boxkite import RELATION_METHODS, context_vector
+from ptolemy_monad import infer_direction, MindsEyeRepass
+
+# This session's pipeline, folded in additively (v5.1). Each import is
+# guarded at call time; if the module or its data is absent the Monad
+# falls back to the nearest_synsets path it always had.
+try:
+    from constructor import construct as _construct
+except Exception:                                   # pragma: no cover
+    _construct = None
+try:
+    import context_pruner as _pruner
+except Exception:                                   # pragma: no cover
+    _pruner = None
+try:
+    import monad_combine as _mc
+    from monad_english_io import hear as _hear
+except Exception:                                   # pragma: no cover
+    _mc = None
+    _hear = None
+from nltk.corpus import wordnet as _wn
 
 
 # ── sentence structure — a real, honestly-scoped template layer, not a
@@ -123,6 +142,9 @@ class Encounter:
     lit_struts_in: List[int]
     lit_struts_out: List[int]
     shared_struts: List[int]
+    selector: str = 'nearest_synsets'  # 'constructor' | 'nearest_synsets' (fallback)
+    pruned: Dict[str, Any] = field(default_factory=dict)   # context_pruner result
+    repass: Dict[str, Any] = field(default_factory=dict)   # Mind's Eye recursive repass
 
 
 class RotaryBoxKiteMonad:
@@ -149,8 +171,26 @@ class RotaryBoxKiteMonad:
             self.box_kite = None
             self._kite_error = str(exc)
 
+        # v5.1 pipeline state — tunables + the combined store (resident).
+        self.topic: Optional[str] = None      # narrows the basin (monad_<topic>.bin)
+        self.register: float = 0.0            # 0 = conjugate, 1 = matched
+        self.store = None                     # monad_combine.CombinedMonad
+        self._store_error: Optional[str] = None
+        if _mc is not None:
+            try:
+                self.store = _mc.read()
+            except Exception as exc:          # recorded, not hidden
+                self._store_error = str(exc)
+
     def attach_harness(self, harness: Any) -> None:
         self.harness = harness
+
+    def checkpoint(self, also_c: bool = False) -> Optional[str]:
+        """Persist the combined store iff mutated. The sedenion WINDOW owns
+        calling this — on its interval and on exit."""
+        if self.store is None:
+            return None
+        return self.store.checkpoint(also_c=also_c)
 
     # ── Mind's Eye: internal visual space only — no render, no interact ────
 
@@ -186,15 +226,73 @@ class RotaryBoxKiteMonad:
 
         psi_in, snapshot = self.look_inward(text)
 
-        pool = neighborhood_corpus(ctx.leaves)
-        out = nearest_synsets(ctx.root_vector, pool, top_k=5) if pool else []
-        words_out = [(s.lemma_names()[0] if s.lemma_names() else s.name()).replace('_', ' ')
-                    for _, s in out]
+        # ── word selection ── v5.1 constructor (radical distance +
+        # gamma_radial fold + conjugate scale + co-occurrence basin), with
+        # the nearest_synsets path kept as the guaranteed fallback (PACE).
+        selector = 'nearest_synsets'
+        out_synsets: List[Any] = []
+        words_out: List[str] = []
+        if _construct is not None:
+            try:
+                r = _construct(text, register=self.register, topic=self.topic)
+                for w in r.get('top', []):
+                    try:
+                        out_synsets.append(_wn.synset(w['synset']))
+                        words_out.append(w['word'].replace('_', ' '))
+                    except Exception:
+                        continue
+                if words_out:
+                    selector = 'constructor'
+            except Exception:
+                pass
+        if not words_out:
+            pool = neighborhood_corpus(ctx.leaves, basin_k=40,
+                                       basin_topic=self.topic)
+            out = nearest_synsets(ctx.root_vector, pool, top_k=5) if pool else []
+            out_synsets = [s for _, s in out]
+            words_out = [(s.lemma_names()[0] if s.lemma_names() else s.name())
+                         .replace('_', ' ') for s in out_synsets]
+
+        # ── schema prune ── collapse perspective-redundant foci, keep a
+        # redundancy margin (never below 3 while we have them).
+        pruned: Dict[str, Any] = {}
+        if _pruner is not None and len(out_synsets) >= 3:
+            try:
+                vecs = [_pruner.embed16(context_vector(s)) for s in out_synsets]
+                p = _pruner.prune(vecs)
+                pruned = {'kept': p['kept'], 'dropped': p['dropped'],
+                          'groups': [[words_out[i] for i in g] for g in p['groups']]}
+                if p['kept'] >= 3:
+                    keep = sorted(p['reps'])
+                    out_synsets = [out_synsets[i] for i in keep]
+                    words_out = [words_out[i] for i in keep]
+            except Exception:
+                pruned = {}
+
+        # ── Mind's Eye recursive repass ── the redundancy layer, on the
+        # chosen words (16-word frames, 15-edge tree, step +1/word).
+        me = MindsEyeRepass(words_out)
+        for _ in range(len(words_out) + 4):
+            g = me.guidance()
+            if g['action'] == 'stop':
+                break
+            me.record(g['slot'], g['operator'])
+        repass = {'guidance_n': me.passes, 'coverage': me.coverage()}
+
         response_text = assemble_sentence(direction, words_out)
 
         psi_out = cam_encode(response_text) if words_out else psi_in
         pathways = self.look_outward(psi_out, response_text)
         snapshot_out = self._eye_obj.snapshot(psi_out)
+
+        # ── ingest while it is in Hands ── the Monad hears its own output
+        # (external-frame intake; echo 0 — the loop-level echo cap is a
+        # driver concern, not this single pass).
+        if _hear is not None and self.store is not None and words_out:
+            try:
+                _hear(self.store.english, response_text, echo=0)
+            except Exception:
+                pass
 
         if self.box_kite is not None:
             lit_in = self._eye_obj.lit_struts(psi_in)
@@ -207,7 +305,8 @@ class RotaryBoxKiteMonad:
                          words_out=words_out, root_vector=ctx.root_vector,
                          snapshot=snapshot, snapshot_out=snapshot_out, pathways=pathways,
                          lit_struts_in=lit_in, lit_struts_out=lit_out,
-                         shared_struts=shared)
+                         shared_struts=shared,
+                         selector=selector, pruned=pruned, repass=repass)
 
 
 # ── the real test: does WordNet-context proximity track box-kite (algebraic)
