@@ -1,5 +1,11 @@
 # monad.bin — the single Monad brain (vocabulary + knowledge store)
 
+> **Format spec:** [`SPEC.md`](SPEC.md).
+> **Corpuses + a copy of this builder:** `ContextPlease/claude/monad_bin/`
+> (the corpuses are too big to want as a passed-around binary, so they live in
+> ContextPlease and the bin is rebuilt on-box). This directory is the builder's
+> home in VAPMIP, next to the `ptol` release.
+
 `ptol.c` reads **one** store. `monad.bin` is that store: **both** the
 vocabulary (every word → its deterministic Horner→prime→Riemann-zero address)
 **and** the knowledge store (the β-field, E-field, and the A-matrix
