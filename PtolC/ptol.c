@@ -16,6 +16,26 @@
  * The response is the shadow of the geometry.
  * These scalars are the geometry.  The words are the shadow.
  *
+ * ── The fold (2026-08-28, no version bump — additive readout only) ────────
+ * The J_red / J_blue power balance IS the Smith / Joukowsky fold. Writing
+ * the projection as an ADD:SCALE:SIGN word (the tier-0 floor
+ * Aff(1,R) = ADD |x| (SCALE x SIGN)):
+ *
+ *   u  =  g·ln s + a   ,   here  a = 0 (anchored at the balanced Eye),
+ *                               s = P_red / P_blue  (the SCALE),
+ *                               g = sign(ln s)       (the SIGN)
+ *   Γ  =  tanh(u/2)  =  (P_red − P_blue) / (P_red + P_blue)  =  2·σ_self − 1
+ *
+ * Γ = 0  ⟺  σ_self = ½  ⟺  u = 0  ⟺  the ground state / Eye H / the now.
+ * The tower Eyes R,C,H,O,S are this same fold read at σ = 1, ¾, ½, ¼, 0.
+ * measure_gamma() below returns (Γ, u); the -r and -sigma reports print them.
+ *
+ * NOTE (deferred, needs the author's call): 0_RB emits d*_taut = Ω_ZS/ln 10
+ * ≈ 0.24631 as the *geometry* (the "Flow" face); 0.24600 above is the
+ * *measured* "Boundary" face (d*_spec). ptol.c is the geometry engine, so
+ * the conserved constant here may want to be 0.24631 — left at 0.24600
+ * pending sign-off, since changing a load-bearing constant is a 5.2 change.
+ *
  * Flags:
  *   -r         raw mode: 16 scalars + primes + 16 Σ_RB products, machine-readable
  *   -eye <X>   set observation Eye: R(σ=1) C(σ=¾) H(σ=½) O(σ=¼) S(σ=0)
@@ -233,6 +253,25 @@ static double measure_sigma(const double *v)
     double total = p_red + p_blue;
     if (total < 1e-15) return 0.5;
     return p_red / total;
+}
+
+/* ── The fold — Γ = tanh(u/2), the ADD:SCALE:SIGN word of the projection ── */
+/*
+ * Γ = (P_red − P_blue)/(P_red + P_blue) = 2·σ_self − 1  — the Smith-chart
+ * reflection coefficient of the J_red/J_blue balance.
+ * u = ln(P_red/P_blue) = 2·atanh(Γ)                     — the signed word
+ *     length; SIGN = sign(u), SCALE = e^|u|, ADD = 0 (anchored at Eye H).
+ * Γ = tanh(u/2) exactly. Γ = 0 ⟺ σ_self = ½ ⟺ ground state / the now.
+ * Additive readout only — the projection and emission are unchanged.
+ */
+static void measure_gamma(const double *v, double *gamma_out, double *u_out)
+{
+    double sig = measure_sigma(v);              /* P_red / (P_red + P_blue) */
+    double g   = 2.0 * sig - 1.0;               /* Γ ∈ (−1, 1)              */
+    if (g >  0.999999999) g =  0.999999999;
+    if (g < -0.999999999) g = -0.999999999;
+    if (gamma_out) *gamma_out = g;
+    if (u_out)     *u_out     = 2.0 * atanh(g); /* = ln(P_red/P_blue)       */
 }
 
 /* ── Comparator (ascending |x|, for spiral ZD→great circle) ─────────────── */
@@ -947,11 +986,15 @@ int main(int argc, char *argv[])
             v[k] = (norm > 0.0) ? _x[k] / norm : 0.0;
 
         double sigma_out = measure_sigma(v);
+        double gamma_out, u_out;
+        measure_gamma(v, &gamma_out, &u_out);
 
         /* Output: measured σ first, then x[16] — the sedenion pathway */
         printf("sigma_in:  %.10f\n", sigma_in);
         printf("sigma_out: %.10f\n", sigma_out);
         printf("delta:     %+.10f\n", sigma_out - 0.5);
+        printf("gamma:     %+.10f\n", gamma_out);   /* the fold: 2σ−1 = tanh(u/2) */
+        printf("u:         %+.10f\n", u_out);       /* ADD:SCALE:SIGN word length */
         printf("---\n");
         for (int k = 0; k < 16; k++)
             printf("%+.10f\n", v[k]);
@@ -1111,9 +1154,13 @@ int main(int argc, char *argv[])
         for (int k = 0; k < 16; k++)
             printf("%+.10f\n", vb[k]);
 
-        fprintf(stderr, "eye: %s  σ_in: %.4f  σ_self: %.10f  (delta from ½: %+.10f)\n",
+        double gamma_self, u_self;
+        measure_gamma(v, &gamma_self, &u_self);
+        printf("---\ngamma: %+.10f\nu:     %+.10f\n", gamma_self, u_self);
+
+        fprintf(stderr, "eye: %s  σ_in: %.4f  σ_self: %.10f  Γ: %+.10f  u: %+.10f  (Δ½: %+.10f)\n",
                 active_eye->name, active_eye->sigma,
-                sigma_self, sigma_self - 0.5);
+                sigma_self, gamma_self, u_self, sigma_self - 0.5);
     }
 
     /* ── Explicit paper output (-s / -b / -H) ── */

@@ -1,0 +1,70 @@
+{
+  "generated": "2026-08-29T11:03:35",
+  "target": "monad.bin",
+  "note": "monad.bin = union(factor bins). Vocabulary AND knowledge store. Every word address is deterministic (Horner\u2192prime\u2192\u03b3), so the union is order-independent and reproducible. Rebuild on-box: python3 build_monad_bin.py merge",
+  "factors": [
+    {
+      "bin": "monad_english.bin",
+      "weight": 1.0,
+      "sha256": "e896a07e0090e671036b9f856a1ada9c582ca2b2cdf5404542d6afe161d2a3b3",
+      "vocab": 164283,
+      "edges": 2248064
+    },
+    {
+      "bin": "monad_foundations.bin",
+      "weight": 1.0,
+      "sha256": "4206313d7c3bed4628f9471fa7f912bd5f8579d89e7c31a12287811d3d9b0063",
+      "vocab": 5712,
+      "edges": 29806
+    },
+    {
+      "bin": "monad_meaning.bin",
+      "weight": 1.0,
+      "sha256": "75514cb17469fa94d47044296ea0b6cadecbde9e23bfee3edfc8485ea68c7505",
+      "vocab": 1066,
+      "edges": 3280
+    },
+    {
+      "bin": "monad_mathematics.bin",
+      "weight": 1.0,
+      "sha256": "7f1f05510caac70117e36f72519a6effb022912d20398ed1da8326cea5618148",
+      "vocab": 56451,
+      "edges": 460282
+    },
+    {
+      "bin": "monad_physics.bin",
+      "weight": 1.0,
+      "sha256": "39ab6f2eaad7f627f965b9a341e2ab7ed9a1fb997d5580d75ada1f1c6eb69f03",
+      "vocab": 58003,
+      "edges": 599146
+    },
+    {
+      "bin": "monad_python.bin",
+      "weight": 1.0,
+      "sha256": "339f177c23b06ce7b237a3d1836f805c160d5d207e9ce0936ef31b85a3526194",
+      "vocab": 25541,
+      "edges": 361932
+    },
+    {
+      "bin": "monad_c.bin",
+      "weight": 1.0,
+      "sha256": "fe95125253737683dacffe3c94c81b224c1569ffb3f18db1f0f8a081998f8afb",
+      "vocab": 8189,
+      "edges": 91526
+    },
+    {
+      "bin": "monad_engineering.bin",
+      "weight": 1.2,
+      "sha256": "cf1dd46caf0f3a565b7d78e238e1259a332ac3ce645f78f83dc0ae398e4b2f66",
+      "vocab": 20677,
+      "edges": 185424
+    },
+    {
+      "bin": "monad_war.bin",
+      "weight": 1.2,
+      "sha256": "237ed5ce8949bb1a9db9c36802cf624215284dc558dbdba2f05f3a3fbf2fedb5",
+      "vocab": 3006,
+      "edges": 12162
+    }
+  ]
+}
