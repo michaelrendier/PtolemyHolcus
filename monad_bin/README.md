@@ -37,8 +37,9 @@ python3 build_monad_bin.py manifest  # (re)write manifest.json
 | `monad_c.bin` | 8,189 | 91,526 | 1.0 | C source corpus |
 | `monad_engineering.bin` | 20,677 | 185,424 | 1.2 | **this project's own context primers + TODOs** (`ContextPlease/claude/hist_prime`, `hist_todo`) |
 | `monad_war.bin` | 3,006 | 12,162 | 1.2 | the **prime-directive conversations** + the Caesar/Gallic parallel corpus |
+| `monad_repos.bin` | 68,121 | 864,062 | 1.0 | **all prose text across every repo** — wiki pages, READMEs, docs, papers, addenda (no code; 614 files, 1.6 M words, quality-gated against vendored/generated/wordlist/license files). Built by `.claude/scratchpad/2026-08-28_primer-corpus-ingest/corpus_repos.py`. |
 
-**Merged:** `monad.bin` — 266,039 words, 3,407,500 edges, ≈ 58 MB, 9,270 words
+**Merged:** `monad.bin` — 298,441 words, 3,912,594 edges, ≈ 66 MB, 10,133 words
 with β > 0.5.
 
 ### merge semantics (lossless, additive)

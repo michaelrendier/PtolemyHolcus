@@ -67,6 +67,7 @@ FACTORS = [
     ("monad_c.bin",            1.0),
     ("monad_engineering.bin",  1.2),   # this project's own detailed self-description
     ("monad_war.bin",          1.2),   # the prime-directive conversations + Caesar corpus
+    ("monad_repos.bin",        1.0),   # all prose text (wiki/README/docs/papers) across every repo
 ]
 OUT_DEFAULT = os.path.join(PTOL, "monad.bin")
 

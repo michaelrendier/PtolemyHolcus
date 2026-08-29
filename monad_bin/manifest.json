@@ -1,5 +1,5 @@
 {
-  "generated": "2026-08-29T11:03:35",
+  "generated": "2026-08-29T11:23:31",
   "target": "monad.bin",
   "note": "monad.bin = union(factor bins). Vocabulary AND knowledge store. Every word address is deterministic (Horner\u2192prime\u2192\u03b3), so the union is order-independent and reproducible. Rebuild on-box: python3 build_monad_bin.py merge",
   "factors": [
@@ -65,6 +65,13 @@
       "sha256": "237ed5ce8949bb1a9db9c36802cf624215284dc558dbdba2f05f3a3fbf2fedb5",
       "vocab": 3006,
       "edges": 12162
+    },
+    {
+      "bin": "monad_repos.bin",
+      "weight": 1.0,
+      "sha256": "0bb680ef86abe0afd8a6801d999763d2bcc526780cbf19c640c5c8ce9075f452",
+      "vocab": 68121,
+      "edges": 864062
     }
   ]
 }
