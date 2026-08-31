@@ -1,0 +1,6 @@
+#!/bin/sh
+# post-commit — feed committed documentation into the Monad field.
+# Shared across every ThePlace repo via core.hooksPath (see
+# monad_bin/service/install_git_hooks.sh). Best-effort, backgrounded, never
+# blocks the commit.
+exec python3 "$HOME/.claude/hooks/monad_doc_commit.py" </dev/null >/dev/null 2>&1 &

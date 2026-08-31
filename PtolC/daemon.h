@@ -7,6 +7,14 @@
  * Protocol (line-based, UTF-8):
  *   Client → Server:
  *     HEAR <query text>\n    — hear/speak, returns response
+ *     OBSERVE <class>\n      — passive conversational ingest. Followed by
+ *       <prose line>\n          prose lines, terminated by a lone '.'.
+ *       ...\n                   Each line is learned into the field.
+ *       .\n                     <class> = external (a user prompt — the
+ *                               human, full weight) | internal (assistant
+ *                               final prose — the coupled system's own
+ *                               language faculty, down-weighted). See
+ *                               harness.INGEST_POLICY. Replies "OK <chars>".
  *     STATUS\n               — field status
  *     HEALTH\n               — field health report
  *     SEARCH <query>\n       — arXiv + Wikipedia + LMFDB context search
@@ -17,6 +25,15 @@
  *   Server → Client:
  *     <response lines>
  *     .\n                    — end-of-message sentinel
+ *
+ * monad3_c.bin ownership (the writer pen):
+ *   Before any write to the combined store (self-flush after HEAR, and the
+ *   checkpoint on shutdown) the daemon reads ~/.ptolemy/monad3_c.writer.owner
+ *   — "<owner>:<pid>", written by whoever holds flock() on
+ *   ~/.ptolemy/monad3_c.writer. A live "ptolemy:<pid>" (a bare Monad or the
+ *   ptol binary self-persisting an exact copy) makes the daemon STAND DOWN;
+ *   "daemon:*", a stale pid, or no sidecar → the daemon writes. One writer,
+ *   whole persistence surface, chosen by harness attachment.
  *
  * Socket path search order:
  *   1. -S <path> flag

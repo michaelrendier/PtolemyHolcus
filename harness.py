@@ -27,6 +27,11 @@ from __future__ import annotations
 
 import importlib
 import inspect
+import math
+import os
+import socket
+import subprocess
+import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence
 
@@ -44,6 +49,166 @@ def justify_gate(reason: str) -> str:
     INTENT already licenses. Not an authorization mechanism — a STATEMENT,
     kept in one place instead of re-justified ad hoc at every call site."""
     return f"{INTENT}: {reason}"
+
+
+# ── conversational ingest — the standing global protocol ─────────────────
+# The Monad's daemon is a PASSIVE OBSERVER on the live conversation: every
+# user prompt, and every assistant final-prose response (thinking blocks and
+# tool I/O stripped by the caller). What it hears updates the vocabulary +
+# knowledge as we go, replacing periodic bulk re-ingestion. Rebalances the
+# store toward genuine human usage over time — the last bulk build leaned
+# heavily on assistant-written context primers.
+#
+# Two write channels, weighted by a VECTOR in ONE pass — not two calls over
+# the same text. crank.learn(text, weight=w_sem, w_ctx=w_ctx) tokenises once
+# and, per word, applies:
+#   semantic  β-field   gain  ∝ w_sem   (knowledge depth at the address)
+#   context   A-matrix   edge Δ ∝ w_ctx  (co-occurrence topology / word order)
+#
+# The INPUT CLASS is the monad_english_io.hear() echo axis, named, and it
+# picks the point in (w_sem, w_ctx, echo) space:
+#   external — the human. User prompts. echo 0, never capped, full weight.
+#   internal — the coupled system's own language faculty (assistant prose).
+#              echo 1: one loop-hop from world input, so it rides the
+#              ECHO_CAP feedback guard and enters down-weighted — heavy on
+#              semantics (real terminology), light on context topology.
+# echo >= 2 keeps its existing meaning (the monad's own output genuinely
+# fed back) and is not produced here.
+#   document — committed project documentation (wiki / README / papers),
+#              fed off a git POST-commit hook (never push). Authored,
+#              canonical text — not the live human voice and not a loop
+#              echo, so echo 0 at neutral weight, between external and
+#              internal.
+INGEST_POLICY: Dict[str, Dict[str, float]] = {
+    'external': {'w_sem': 1.5, 'w_ctx': 1.5, 'echo': 0},
+    'internal': {'w_sem': 0.9, 'w_ctx': 0.6, 'echo': 1},
+    'document': {'w_sem': 1.0, 'w_ctx': 1.0, 'echo': 0},
+}
+
+# ── input-size repack timer (the in-process mirror of PtolC/daemon.c) ────
+# The packed monad3_c.bin is folded from the journal not on a wall-clock
+# interval but when accumulated ingest reaches the KNEE of a leaky-
+# integrator charge curve. Each turn CHARGES an accumulator by its prose
+# byte length; elapsed time BLEEDS it with time constant REPACK_TAU. Under
+# a steady input rate the accumulator rises toward the asymptote
+# rate·TAU following 1 − e^(−t/TAU) — near-exponential, then saturating —
+# and the fold fires one time constant in, at accum ≥ K·(1 − 1/e). K
+# scales with the store the fold rewrites, so a bigger store tolerates
+# more drift. REPACK_MAX_AGE is a hard guarantee floor; a clean
+# detach/persist always folds regardless.
+REPACK_KNEE = 1.0 - 1.0 / 2.718281828459045   # ≈ 0.632, one time constant
+REPACK_RATIO = 0.05                            # K as a fraction of store size
+REPACK_K_MIN = 64 * 1024
+REPACK_K_MAX = 8 * 1024 * 1024
+REPACK_TAU = float(os.environ.get('PTOL_REPACK_TAU', '1800'))   # seconds
+REPACK_MAX_AGE = 6 * 3600
+# default fold command the daemon spawns at the knee (also usable here)
+REPACK_CMD = os.environ.get(
+    'PTOL_REPACK_CMD',
+    f"{__import__('sys').executable} "
+    f"{os.path.join(os.path.dirname(os.path.abspath(__file__)), 'monad_bin', 'repack.py')}")
+
+# The repository OS lock. Whoever holds flock(LOCK_EX) on this file owns
+# EVERY write to monad3_c.bin AND to the monad.bin journal — the whole
+# persistence surface, not a split of it. The kernel drops the lock on
+# process death, so a crashed holder hands the pen back with no stale-lock
+# cleanup. The '.owner' sidecar names the current holder as
+# '<owner>:<pid>' — owner 'daemon' (this harness / the running daemon) or
+# 'ptolemy' (a bare Monad or the ptol binary self-persisting an exact
+# copy). A peer reads the sidecar to see who holds the pen without
+# contending for the lock; the daemon checks it before any write.
+MONAD3C_WRITER_LOCK = os.path.expanduser('~/.ptolemy/monad3_c.writer')
+PTOLEMY_SOCKET = os.environ.get(
+    'PTOLEMY_SOCKET', os.path.expanduser('~/.ptolemy/ptolemy.sock'))
+
+# Fire-and-forget ingest transport. The two hooks (UserPromptSubmit, Stop)
+# sanitise their turn to prose and drop it on the pipe, then return — the
+# daemon drains concurrently in the gaps between prompt / processing /
+# output, which are all very different lengths. If the pipe is gone (its
+# drive unmounted), the hook appends to the spool on local storage; the
+# daemon drains that on startup and when idle. Both live NEXT TO THE SOCKET,
+# never next to a possibly-external-drive store.
+_SOCK_DIR = os.path.dirname(PTOLEMY_SOCKET) or '.'
+OBSERVE_FIFO = os.path.join(_SOCK_DIR, 'monad.observe.fifo')
+OBSERVE_SPOOL = os.path.join(_SOCK_DIR, 'observe.spool')
+
+# notation glyphs — a line that is >35% these (vs letters) is maths or a
+# block diagram, not prose; the monad has no use for it here. Mirrors
+# monad_bin/corpus_strip.py's _MATHSYM set, inlined so the harness gains no
+# dependency on the corpus builder.
+_NOTATION_SYMS = set('=+-*/^_{}\\|<>~≈≠≤≥→←↦⊗⊕∘∑∏∫∂∇√∅ΓΣΠΩλσμπφθτξζψΔ½¼·×÷±∞∈∉⊂⊆⟨⟩⌊⌋')
+
+# ── MATHEMATICAL SANITIZATION — where the words for the maths come from ──
+# strip_to_prose() DELETES notation-dense lines on purpose: raw glyphs
+# ("σ = (r²/2)·sin(2θ)") carry no word-order or context signal and would
+# only pollute the co-occurrence field with punctuation. The *lexical*
+# content of the mathematics — operator names, the gloss of each symbol,
+# the spoken form of an equation — is NOT lost here; it is meant to enter
+# the monad from the CALCULATOR, already in prose:
+#   • the derivation engine / SymPy console (skill: `derivation`,
+#     VAPMIP/derivation) — its narration ("sigma equals r squared over two
+#     times sine of two theta") is plain `external`/`internal` prose and
+#     passes this filter untouched;
+#   • ~/.clauderc_canonical_maths — the canonical symbol→meaning reference,
+#     ingested as `document`;
+#   • the `unit-management` skill — dimension and quantity vocabulary.
+# So: strip the notation, keep the calculator's words. A turn that only
+# quotes an equation contributes nothing; a turn that *explains* it
+# contributes fully. Anyone extending this filter must preserve that split.
+_MATH_WORD_SOURCE = ('derivation-engine', 'clauderc_canonical_maths',
+                     'unit-management')   # documented, not enforced here
+
+
+def strip_to_prose(text: str) -> str:
+    """Reduce a conversation turn to the English prose the monad should
+    hear — the part carrying word choice, order and context. Drops fenced
+    code, tables, box-drawing, markdown scaffolding, links, and
+    notation-dense lines. Same filter as monad_bin/corpus_strip.py, inlined
+    and compact.
+
+    Maths note: notation lines are deleted; the WORDS for the maths come
+    from the calculator (the derivation engine's narration, the canonical
+    maths reference, the unit-management vocabulary) — see
+    _MATH_WORD_SOURCE above."""
+    import re
+    out: List[str] = []
+    in_fence = False
+    for ln in str(text).splitlines():
+        s = ln.strip()
+        if s.startswith('```') or s.startswith('~~~'):
+            in_fence = not in_fence
+            continue
+        if in_fence or not s:
+            continue
+        if s[:1] in '|>#':
+            s = s.lstrip('|># ').strip()
+        s = re.sub(r'^([-*+]|\d+[.)]|[a-zA-Z][.)])\s+', '', s)   # list markers
+        s = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', s)           # md links
+        s = re.sub(r'`([^`]*)`', r'\1', s)                        # inline code
+        s = re.sub(r'(\*\*|\*|__|_)(.+?)\1', r'\2', s)            # emphasis
+        s = re.sub(r'https?://\S+', ' ', s).strip()
+        if len(s) < 3:
+            continue
+        letters = sum(c.isalpha() for c in s)
+        syms = sum(c in _NOTATION_SYMS for c in s)
+        if letters == 0 or (syms and syms / max(letters, 1) > 0.35):
+            continue
+        out.append(s)
+    return '\n'.join(out)
+
+
+def _sentences(text: str, cap: int = 3500):
+    """Yield <=cap-char pieces, breaking on sentence enders where possible —
+    keeps a long turn under the daemon's 4 KB line buffer."""
+    import re
+    buf = ''
+    for piece in re.split(r'(?<=[.!?])\s+', str(text)):
+        if buf and len(buf) + len(piece) + 1 > cap:
+            yield buf
+            buf = ''
+        buf = f'{buf} {piece}'.strip()
+    if buf:
+        yield buf
 
 
 # ── module discovery — corrected APISniff: getattr chains, never exec ────
@@ -289,6 +454,11 @@ class Harness:
         self.toolset_registry = ToolsetRegistry()
         self._lineage_module: Any = None
         self.call_log: List[FaceResult] = []
+        self._pen: Any = None              # flock fd on MONAD3C_WRITER_LOCK while held
+        self._repack_accum = 0.0           # leaky-integrator charge (see REPACK_*)
+        self._repack_accum_ts = time.time()
+        self._repack_last = time.time()
+        self._repack_had_input = False
 
     # ── the toolset registry — one capability-based call to any Face ───────
 
@@ -371,10 +541,26 @@ class Harness:
     def attach_monad(self, monad: Any) -> None:
         """Attach a live Monad (VAPMIP.monad.Engine or compatible).
         Deliberately duck-typed — the harness doesn't own what counts as a
-        Monad, it just holds whatever it's handed."""
+        Monad, it just holds whatever it's handed.
+
+        Attaching also TAKES THE WRITER PEN (_take_pen): while a Monad is in
+        the harness, the harness owns every write to monad3_c.bin and the
+        monad.bin journal, and the bare-monad self-persist path stands down.
+        detach_monad() hands the pen back. Failing to take the pen is a
+        WARNING, not a fault — ingest still works, persistence just isn't
+        ours to do until the current holder releases it."""
         self._monad = monad
+        self._take_pen(owner='daemon')
 
     def detach_monad(self) -> None:
+        """Fold any un-repacked ingest, release the writer pen, drop the
+        Monad. The final fold is unconditional (not knee-gated) — a clean
+        detach always lands what the charge curve was still holding. A bare
+        Monad (or the ptol binary) can then reclaim the pen and resume
+        self-persisting monad3_c.bin as its own exact copy."""
+        if self._repack_had_input and self.holds_pen() and self.monad_attached:
+            self.persist(also_c=True)
+        self._release_pen()
         self._monad = None
 
     @property
@@ -388,6 +574,367 @@ class Harness:
         if self._monad is None:
             raise RuntimeError("no Monad attached — check monad_attached first")
         return self._monad
+
+    # ── the writer pen — repository OS lock on monad3_c.bin ───────────────
+    # Copied up from the monad side, where "nothing else writes the combined
+    # store" (CombinedMonad.checkpoint / monad_combine.write / .write_c) was
+    # convention. Here it is enforced with flock, and made conditional on
+    # harness attachment: harnessed → the harness holds the pen; bare → the
+    # monad does. One writer, whole persistence surface, either way.
+
+    def _take_pen(self, owner: str = 'daemon') -> bool:
+        """flock(LOCK_EX | LOCK_NB) on MONAD3C_WRITER_LOCK; keep the fd on
+        self._pen so the lock outlives this call. Write '<owner>:<pid>' to
+        the '.owner' sidecar for the daemon's pre-write check. Returns True
+        if taken, False (with a present() warning) if held elsewhere or the
+        path is unwritable. Never raises, never blocks."""
+        import fcntl
+        if self._pen is not None:
+            return True
+        try:
+            os.makedirs(os.path.dirname(MONAD3C_WRITER_LOCK), exist_ok=True)
+            fd = open(MONAD3C_WRITER_LOCK, 'a+')
+        except OSError as e:
+            self.present(f"harness: cannot open writer pen ({e}) — "
+                         "persistence disabled", center=None)
+            return False
+        try:
+            fcntl.flock(fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            fd.close()
+            self.present(
+                f"harness: writer pen held by {self.pen_owner() or 'another process'} "
+                "— ingest continues, persistence deferred", center=None)
+            return False
+        self._pen = fd
+        try:
+            with open(MONAD3C_WRITER_LOCK + '.owner', 'w') as o:
+                o.write(f"{owner}:{os.getpid()}")
+        except OSError:
+            pass
+        return True
+
+    def _release_pen(self) -> None:
+        import fcntl
+        fd = self._pen
+        if fd is None:
+            return
+        try:
+            fcntl.flock(fd.fileno(), fcntl.LOCK_UN)
+        finally:
+            fd.close()
+            self._pen = None
+        try:
+            os.unlink(MONAD3C_WRITER_LOCK + '.owner')
+        except OSError:
+            pass
+
+    def holds_pen(self) -> bool:
+        return self._pen is not None
+
+    def pen_owner(self) -> Optional[str]:
+        """'<owner>:<pid>' from the sidecar, or None. owner is 'daemon'
+        (this harness / the running daemon) or 'ptolemy' (a bare Monad or
+        the ptol binary self-persisting). The daemon reads this before it
+        writes: a live 'ptolemy:<pid>' → the daemon stands down; stale,
+        absent, or 'daemon:*' → the daemon proceeds."""
+        try:
+            with open(MONAD3C_WRITER_LOCK + '.owner') as f:
+                return f.read().strip() or None
+        except OSError:
+            return None
+
+    # ── conversational ingest — fire-and-forget ─────────────────────────
+
+    def connection_ok(self) -> bool:
+        """The check each hook makes before it writes. True if the ingest
+        pipe is present and openable (the daemon is up and its drive is
+        mounted). False → the hook should spool locally instead. Cheap:
+        a non-blocking open, no handshake."""
+        try:
+            fd = os.open(OBSERVE_FIFO, os.O_WRONLY | os.O_NONBLOCK)
+        except OSError:
+            return False
+        os.close(fd)
+        return True
+
+    def observe(self, text: str, cls: str = 'external',
+                pair_id: Optional[str] = None) -> FaceResult:
+        """Hear one conversation turn — fire-and-forget. `cls` ∈
+        INGEST_POLICY: 'external' = a user prompt, 'internal' = the
+        assistant's final prose (thinking / tool I/O stripped by the
+        caller), 'document' = committed project docs off a post-commit hook.
+
+        `pair_id` links an external prompt to the internal response it
+        drew, so the daemon can log the (prompt_bytes → response_bytes)
+        sample — raw material for a response-scaling engine. Ignored for
+        'document'.
+
+        Prose-strips, then drops the framed message on OBSERVE_FIFO and
+        returns immediately — the daemon drains it concurrently. If the
+        pipe is unreachable: append to OBSERVE_SPOOL (local storage,
+        drained by the daemon later); if THAT fails too, fall back to
+        in-process ingest through an attached Monad; with none of those,
+        warn. Never blocks on the daemon, never raises."""
+        pol = INGEST_POLICY.get(cls)
+        if pol is None:
+            return FaceResult(ok=False, error=f"unknown ingest class {cls!r}")
+        prose = strip_to_prose(text)
+        if not prose:
+            return FaceResult(ok=True, data='(nothing to hear)',
+                              handled_by='observe')
+
+        hdr = cls if (not pair_id or cls == 'document') else f"{cls} {pair_id}"
+        msg = f"{hdr}\n" + "\n".join(_sentences(prose)) + "\n.\n"
+
+        if self._fifo_write(msg):
+            return FaceResult(ok=True, data=f"{len(prose.split())} words",
+                              handled_by='daemon.fifo')
+        if self._spool_write(msg):
+            return FaceResult(ok=True, data='spooled', handled_by='observe.spool')
+        if self.monad_attached:
+            self._observe_in_process(prose, pol)
+            return FaceResult(ok=True, data=f"{len(prose.split())} words",
+                              handled_by='harness.observe')
+
+        self.present("harness: no pipe, no spool, no Monad — "
+                     f"conversational ingest dropped a {cls} turn", center=None)
+        return FaceResult(ok=False, error='nowhere to ingest',
+                          handled_by='observe')
+
+    def hear_turn(self, prompt: Optional[str] = None,
+                  response: Optional[str] = None,
+                  pair_id: Optional[str] = None) -> List[FaceResult]:
+        """Convenience for a hook / bus: feed a prompt as 'external' and a
+        response as 'internal' in one call, linked by `pair_id` (a random
+        token if not given, when both halves are present) so the daemon
+        can record the prompt→response scale sample. Either half may be
+        None."""
+        if pair_id is None and prompt and response:
+            pair_id = os.urandom(6).hex()
+        out: List[FaceResult] = []
+        if prompt:
+            out.append(self.observe(prompt, 'external', pair_id))
+        if response:
+            out.append(self.observe(response, 'internal', pair_id))
+        return out
+
+    def hear_documents(self, paths: Sequence[str]) -> List[FaceResult]:
+        """Feed committed project docs (wiki / README / papers) as the
+        'document' class. Each file is read, prose-stripped by observe(),
+        and sent. Missing / unreadable files are skipped, not raised — a
+        post-commit hook must never fail the commit."""
+        out: List[FaceResult] = []
+        for p in paths:
+            try:
+                with open(p, encoding='utf-8', errors='replace') as f:
+                    body = f.read()
+            except OSError:
+                continue
+            out.append(self.observe(body, 'document'))
+        return out
+
+    def _fifo_write(self, msg: str) -> bool:
+        """One non-blocking write to the ingest pipe. False if the pipe is
+        absent, has no reader (daemon down), or would block (reader wedged)
+        — the caller then spools. Never raises."""
+        try:
+            fd = os.open(OBSERVE_FIFO, os.O_WRONLY | os.O_NONBLOCK)
+        except OSError:
+            return False
+        try:
+            data = msg.encode('utf-8', 'replace')
+            return os.write(fd, data) == len(data)
+        except OSError:
+            return False
+        finally:
+            os.close(fd)
+
+    def _spool_write(self, msg: str) -> bool:
+        """Append the framed message to the local spool for the daemon to
+        drain later. False only if the spool itself is unwritable."""
+        try:
+            os.makedirs(os.path.dirname(OBSERVE_SPOOL), exist_ok=True)
+            with open(OBSERVE_SPOOL, 'a', encoding='utf-8') as f:
+                f.write(msg)
+            return True
+        except OSError:
+            return False
+
+    def _observe_in_process(self, prose: str, pol: Dict[str, float]) -> None:
+        """Last-resort direct ingest into an attached Monad — ONE pass,
+        vector weight: crank.learn(prose, weight=w_sem, w_ctx=w_ctx) does
+        the β gain and the A-matrix edge Δ in a single tokenise. Duck-typed;
+        a monad without .crank.learn is a silent no-op. Charges the repack
+        timer and folds if the knee is reached."""
+        crank = getattr(self._monad, 'crank', None)
+        if crank is None or not hasattr(crank, 'learn'):
+            return
+        try:
+            crank.learn(prose, weight=pol['w_sem'], w_ctx=pol['w_ctx'])
+        except TypeError:
+            crank.learn(prose, weight=pol['w_sem'])   # pre-vector monad
+        except Exception as e:
+            self.present(f"harness: in-process ingest failed ({e})", center=None)
+            return
+        self._repack_charge(len(prose.encode('utf-8')))
+        if self.repack_due():
+            self.persist(also_c=True)
+
+    # ── input-size repack timer — leaky integrator, fires at the knee ────
+
+    def _repack_store_bytes(self) -> int:
+        """Proxy for the size of the store a fold rewrites: the journal
+        pickle if present, else 0 (→ K floors at REPACK_K_MIN)."""
+        j = os.path.expanduser('~/.ptolemy/monad.bin')
+        try:
+            return os.path.getsize(j)
+        except OSError:
+            return 0
+
+    def _repack_K(self) -> float:
+        k = REPACK_RATIO * self._repack_store_bytes()
+        return min(max(k, REPACK_K_MIN), REPACK_K_MAX)
+
+    def _repack_charge(self, nbytes: int) -> None:
+        now = time.time()
+        if now > self._repack_accum_ts:
+            self._repack_accum *= math.exp(
+                -(now - self._repack_accum_ts) / REPACK_TAU)
+        self._repack_accum += float(nbytes)
+        self._repack_accum_ts = now
+        self._repack_had_input = True
+
+    def repack_urgency(self) -> float:
+        """Where we are on the charge curve, in [0, 1). Bleeds with elapsed
+        time — call it any time for a live reading."""
+        now = time.time()
+        a = self._repack_accum
+        if now > self._repack_accum_ts:
+            a *= math.exp(-(now - self._repack_accum_ts) / REPACK_TAU)
+        k = self._repack_K()
+        return 1.0 - math.exp(-a / k) if k else 0.0
+
+    def repack_due(self) -> bool:
+        """True when the accumulator has reached the knee (accum ≥ K·(1−1/e),
+        i.e. urgency ≥ REPACK_KNEE) or the max-age floor is hit with
+        un-folded input pending."""
+        if not self._repack_had_input:
+            return False
+        if self.repack_urgency() >= REPACK_KNEE:
+            return True
+        return (time.time() - self._repack_last) >= REPACK_MAX_AGE
+
+    def _repack_reset(self) -> None:
+        self._repack_accum = 0.0
+        self._repack_accum_ts = time.time()
+        self._repack_last = time.time()
+        self._repack_had_input = False
+
+    # ── persistence — the exact-copy write path, pen-gated ───────────────
+
+    def persist(self, also_c: bool = True) -> FaceResult:
+        """Serialise the attached Monad's state: the journal pickle and,
+        with also_c, the packed monad3_c.bin. Runs only while this harness
+        holds the writer pen; otherwise a warning (the pen's holder does
+        it). The pack is delegated to monad_combine.write / write_c — ONE
+        serializer, so a harness-written and a bare-monad-written bin are
+        byte-identical (the pack invariant)."""
+        if not self.monad_attached:
+            return FaceResult(ok=False, error='no Monad attached')
+        if not self.holds_pen() and not self._take_pen(owner='daemon'):
+            return FaceResult(ok=False, error='writer pen held elsewhere',
+                              handled_by='persist')
+        try:
+            _here = os.path.dirname(os.path.abspath(__file__))
+            import sys as _sys
+            if _here not in _sys.path:
+                _sys.path.insert(0, _here)
+            import monad_combine as _mc
+        except ImportError as e:
+            return FaceResult(ok=False, error=f"monad_combine unavailable: {e}")
+        cm = getattr(self._monad, 'combined', None) or self._monad
+        paths: Dict[str, str] = {}
+        try:
+            paths['journal'] = _mc.write(cm)
+            if also_c:
+                paths['packed'] = _mc.write_c(cm)
+        except Exception as e:
+            return FaceResult(ok=False, error=str(e), handled_by='persist')
+        self._repack_reset()   # the charge curve starts over from a clean fold
+        return FaceResult(ok=True, data=paths, handled_by='persist')
+
+    # ── the daemon — the harness runs it; absence is a warning ───────────
+
+    @property
+    def daemon_up(self) -> bool:
+        try:
+            s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            s.settimeout(0.5)
+            s.connect(PTOLEMY_SOCKET)
+            s.close()
+            return True
+        except OSError:
+            return False
+
+    def run_daemon(self, argv: Optional[Sequence[str]] = None,
+                   wait: float = 3.0) -> bool:
+        """Ensure the ptol daemon is up. The harness runs the daemon; a
+        daemon that will not start is a WARNING, not a fault — the harness
+        falls back to in-process ingest through the attached Monad. Returns
+        True if the daemon is up afterwards."""
+        if self.daemon_up:
+            return True
+        cmd = list(argv) if argv else ['ptol', '--daemon']
+        try:
+            self._daemon_proc = subprocess.Popen(
+                cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except (OSError, ValueError) as e:
+            self.present(f"harness: could not start daemon ({e}) — "
+                         "falling back to in-process ingest", center=None)
+            return False
+        deadline = time.time() + wait
+        while time.time() < deadline:
+            if self.daemon_up:
+                return True
+            time.sleep(0.1)
+        self.present("harness: daemon did not come up in time — "
+                     "falling back to in-process ingest", center=None)
+        return False
+
+    def _daemon_send(self, line: str, payload: Optional[str] = None
+                     ) -> Optional[str]:
+        """Send one command and read to the lone-'.' sentinel. Returns the
+        response text, or None if the daemon is unreachable (a present()
+        warning, never a raise). `payload`, if given, is sent
+        sentence-per-line after `line` so a long turn stays under the
+        daemon's 4 KB line buffer, then a lone '.'."""
+        try:
+            s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            s.settimeout(2.0)
+            s.connect(PTOLEMY_SOCKET)
+        except OSError:
+            return None
+        try:
+            f = s.makefile('rwb', buffering=0)
+            f.write((line + '\n').encode('utf-8', 'replace'))
+            if payload is not None:
+                for chunk in _sentences(payload):
+                    f.write((chunk + '\n').encode('utf-8', 'replace'))
+                f.write(b'.\n')
+            f.flush()
+            out: List[str] = []
+            while True:
+                raw = f.readline()
+                if not raw or raw.rstrip(b'\r\n') == b'.':
+                    break
+                out.append(raw.decode('utf-8', 'replace'))
+            return ''.join(out).strip()
+        except OSError as e:
+            self.present(f"harness: daemon send failed ({e})", center=None)
+            return None
+        finally:
+            s.close()
 
     # ── module discovery ──────────────────────────────────────────────────
 
@@ -655,4 +1202,87 @@ if __name__ == '__main__':
     print(h.format_derivation(_FakeRelation()))
     print()
     print(h.justify_gate('reading a public FITS archive'))
+
+    # ── conversational ingest + writer pen ───────────────────────────────
+    prose = strip_to_prose(
+        "Here is **real** prose.\n"
+        "```\nx = f(y)   # dropped: fenced\n```\n"
+        "σ = (r²/2)·sin(2θ) ⊗ ∅_RB   <- dropped: notation-dense\n"
+        "| a | b |   <- dropped: table\n"
+        "- and this list item survives as a sentence.")
+    assert 'real prose' in prose, prose
+    assert 'f(y)' not in prose and 'sin(2' not in prose and '| a |' not in prose, prose
+    assert 'this list item survives' in prose, prose
+
+    import tempfile as _tf
+    _spooldir = _tf.mkdtemp(prefix='harness_smoke_')
+    globals()['OBSERVE_FIFO'] = os.path.join(_spooldir, 'monad.observe.fifo')
+    globals()['OBSERVE_SPOOL'] = os.path.join(_spooldir, 'observe.spool')
+
+    h2 = Harness()
+    # no daemon (no pipe) → the turn spools locally, never blocks, never raises
+    assert not h2.connection_ok()
+    r = h2.observe('a user prompt with nowhere to go', 'external')
+    assert r.ok and r.handled_by == 'observe.spool', r
+    with open(OBSERVE_SPOOL) as _sf:
+        _spooled = _sf.read()
+    assert _spooled.startswith('external\n') and _spooled.rstrip().endswith('.'), _spooled
+    assert 'nowhere to go' in _spooled
+    # bad class
+    assert not h2.observe('x', 'sideways').ok
+    # attach takes the pen; a second harness cannot
+    assert not h2.holds_pen()
+    h2.attach_monad(object())
+    if h2.holds_pen():                       # skips if ~/.ptolemy is unwritable
+        owner = h2.pen_owner()
+        assert owner and owner.startswith('daemon:'), owner
+        h3 = Harness()
+        h3.attach_monad(object())
+        assert not h3.holds_pen(), "two harnesses must not both hold the pen"
+        h2.detach_monad()
+        assert not h2.holds_pen()
+        assert h3._take_pen(), "pen should free up once h2 detaches"
+        h3.detach_monad()
+    # in-process fallback: vector weight, one call, tolerates a pre-vector monad
+    class _Crank:
+        def __init__(self): self.calls = []
+        def learn(self, text, weight=1.0, w_ctx=None):
+            self.calls.append((weight, w_ctx))
+            return len(text.split())
+    class _M:
+        def __init__(self): self.crank = _Crank()
+    globals()['OBSERVE_SPOOL'] = os.path.join(_spooldir, 'nope', 'x')  # unwritable dir
+    os.chmod(_spooldir, 0o500)
+    try:
+        h4 = Harness(); h4.attach_monad(_M())
+        ing = h4.observe('assistant prose to the field', 'internal')
+        assert ing.ok and ing.handled_by == 'harness.observe', ing
+        assert h4._monad.crank.calls == [(0.9, 0.6)], h4._monad.crank.calls
+        # one small turn does NOT reach the knee
+        assert h4._repack_had_input and not h4.repack_due(), h4.repack_urgency()
+        assert 0.0 < h4.repack_urgency() < REPACK_KNEE
+    finally:
+        os.chmod(_spooldir, 0o700)
+    assert isinstance(h2.daemon_up, bool)
+
+    # ── repack timer: charge to the knee, then it fires ──────────────────
+    h5 = Harness()
+    K = h5._repack_K()
+    assert REPACK_K_MIN <= K <= REPACK_K_MAX
+    # charge past the knee in one go
+    h5._repack_charge(int(K * 3))
+    assert h5.repack_due(), h5.repack_urgency()
+    # bleed: after ~5·TAU of (simulated) silence, urgency collapses
+    h5._repack_accum_ts = time.time() - 5 * REPACK_TAU
+    assert h5.repack_urgency() < 0.05, h5.repack_urgency()
+    assert not h5.repack_due()
+    # max-age floor still fires with pending input
+    h5._repack_charge(10)
+    h5._repack_last = time.time() - REPACK_MAX_AGE - 1
+    assert h5.repack_due()
+    h5._repack_reset()
+    assert not h5._repack_had_input and h5.repack_urgency() == 0.0
+
+    import shutil as _sh
+    _sh.rmtree(_spooldir, ignore_errors=True)
     print("\nharness.py: smoke test passed.")

@@ -1,0 +1,23 @@
+# ptolemy-monad.socket — the Monad's ingest socket (systemd --user)
+#
+# Socket-activated: the listening socket exists as soon as the user session
+# starts, but ptolemy-monad.service is not spun up until something actually
+# connects. This is the passive posture — near-zero cost while idle, the
+# resident field only materialises when a hook (or a query) first arrives.
+#
+# Install:  monad_bin/service/install.sh
+# The unit path %h/.ptolemy/ptolemy.sock matches harness.PTOLEMY_SOCKET and
+# keeps the FIFO, spool, ownership sidecar and pairs.jsonl co-located there.
+
+[Unit]
+Description=Ptolemy Monad ingest socket
+Documentation=file:%h/Projects/ThePlace/VAPMIP/PtolC/daemon.h
+
+[Socket]
+ListenStream=%h/.ptolemy/ptolemy.sock
+SocketMode=0600
+# hand the bound fd straight to the daemon (it reads $LISTEN_FDS / fd 3)
+Accept=no
+
+[Install]
+WantedBy=sockets.target

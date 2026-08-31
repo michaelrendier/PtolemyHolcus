@@ -1,0 +1,51 @@
+# ptolemy-monad.service — the resident Monad field (systemd --user)
+#
+# Started on demand by ptolemy-monad.socket (first connection), or eagerly by
+# the Claude Code SessionStart hook. Holds the language field in memory and
+# drains conversational + document ingest off the FIFO / spool. Time-
+# insensitive by design — niced and idle-IO so it never competes with
+# foreground work; it catches up in the gaps.
+#
+# What it persists: its own checkpoint (state_save) on the repack knee and on
+# shutdown. Folding that learning into the packed monad3_c.bin that ptol.c
+# reads is done by PTOL_REPACK_CMD (monad_bin/repack.py) — see that file and
+# the standing note about the C-side serializer.
+
+[Unit]
+Description=Ptolemy Monad resident field — conversational + document ingest
+Requires=ptolemy-monad.socket
+After=ptolemy-monad.socket
+
+[Service]
+Type=simple
+# -S : socket path (also anchors FIFO/spool/sidecar/pairs in ~/.ptolemy)
+# -c : STATE_MAGIC checkpoint if one exists; harmless if absent (ground state)
+ExecStart=%h/Projects/ThePlace/VAPMIP/PtolC/ptolemy -d -q \
+    -S %h/.ptolemy/ptolemy.sock \
+    -c %h/.ptolemy/monad_field.bin
+
+# the packed store ptol.c reads — the daemon folds conversation drift into
+# it in place at the repack knee (β / age / fire / existing-edge weights,
+# MAP_SHARED + msync, no rebuild). The canonical file is next to the ptol
+# binary, not in ~/.ptolemy.
+Environment=PTOL_MONAD3C=%h/Projects/ThePlace/VAPMIP/PtolC/monad3_c.bin
+# input-size repack timer: bleed time-constant, and the full-rebuild command
+# (only spawned once ~2000 never-seen words have piled up — CSR growth).
+Environment=PTOL_REPACK_TAU=1800
+Environment=PTOL_REPACK_CMD=%h/Projects/ThePlace/VAPMIP/.venv/bin/python %h/Projects/ThePlace/VAPMIP/monad_bin/repack.py
+
+Restart=on-failure
+RestartSec=5
+
+# passive: yield to everything in the foreground
+Nice=10
+CPUSchedulingPolicy=batch
+IOSchedulingClass=idle
+OOMScoreAdjust=300
+
+# guard rails
+MemoryHigh=1G
+MemoryMax=1500M
+
+[Install]
+WantedBy=default.target

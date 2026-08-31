@@ -769,7 +769,8 @@ class Crank:
     def _clean(self, w: str) -> str:
         return w.lower().strip('.,!?;:\'"()[]{}—。，！？；：、“”‘’（）【】《》…·')
 
-    def learn(self, text: str, weight: float = 1.0) -> int:
+    def learn(self, text: str, weight: float = 1.0,
+              w_ctx: Optional[float] = None) -> int:
         """
         e₂ bind — deepen β-field. Build A-matrix connections.
 
@@ -777,14 +778,22 @@ class Crank:
         :param weight: Multiplier on beta gain and edge delta (1.0 = normal;
             >1.0 = authoritative commit; do not use negative values — use
             retract() to suppress edges).
+        :param w_ctx: Optional SEPARATE multiplier for the A-matrix edge
+            delta, so β (semantic) and edges (context) can be weighted
+            independently in ONE pass — a weight *vector*, not two calls
+            over the same text. None → w_ctx = weight (unchanged behaviour).
+            Conversational ingest uses (w_sem, w_ctx) = (1.5, 1.5) for a
+            user prompt, (0.9, 0.6) for assistant prose.
         :returns: Number of words processed.
         :rtype: int
         """
+        w_sem      = weight
+        w_ctx      = w_sem if w_ctx is None else w_ctx
         words      = [self._clean(w) for w in _cjk_space(text).split()]
         words      = [w for w in words if w and len(w) >= 1]
-        beta_mult  = 1.0 + 0.08 * weight   # weight=1 → ×1.08 (unchanged)
-        edge_fwd   = 0.05 * weight
-        edge_back  = 0.02 * weight
+        beta_mult  = 1.0 + 0.08 * w_sem    # weight=1 → ×1.08 (unchanged)
+        edge_fwd   = 0.05 * w_ctx
+        edge_back  = 0.02 * w_ctx
         prev       = None
         for w in words:
             k = self._idx(w)
