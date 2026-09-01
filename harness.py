@@ -83,6 +83,10 @@ INGEST_POLICY: Dict[str, Dict[str, float]] = {
     'external': {'w_sem': 1.5, 'w_ctx': 1.5, 'echo': 0},
     'internal': {'w_sem': 0.9, 'w_ctx': 0.6, 'echo': 1},
     'document': {'w_sem': 1.0, 'w_ctx': 1.0, 'echo': 0},
+    # 'web' = a page Ptol fetched and stripped. Below 'document' (found, not
+    # authored; register-noisy), above nothing. Context weight low —
+    # co-occurrence in scraped nav/boilerplate is noise.
+    'web':      {'w_sem': 0.7, 'w_ctx': 0.5, 'echo': 0},
 }
 
 # ── input-size repack timer (the in-process mirror of PtolC/daemon.c) ────
@@ -459,6 +463,11 @@ class Harness:
         self._repack_accum_ts = time.time()
         self._repack_last = time.time()
         self._repack_had_input = False
+        # ── acquisition bus: language-blind backend + threading/memory governor
+        self._backend: Any = None          # monad_bus.MonadBackend once loaded
+        self._governor: Any = None         # monad_bus.ResourceGovernor (lazy)
+        self._seen: Dict[str, float] = {}  # url -> last-fetch ts (dedup; stands
+                                           # in for ptol_blockchain's Long Path)
 
     # ── the toolset registry — one capability-based call to any Face ───────
 
@@ -575,6 +584,126 @@ class Harness:
             raise RuntimeError("no Monad attached — check monad_attached first")
         return self._monad
 
+    # ── acquisition bus: language-blind monad + threading/memory governor ──
+    # The harness is BLIND to whether the Monad is the C binary (the ptolemy
+    # daemon) or the python object. load_monad() picks one — or a
+    # NullMonadBackend — and REPORTS. Every path here is warn-not-fault.
+
+    def load_monad(self, prefer: str = 'auto') -> Dict[str, Any]:
+        """Load a Monad backend at `prefer` ∈ {'auto','c','python'} and
+        return the report. 'auto' = the C daemon if reachable, else the
+        python RotaryBoxKiteMonad, else Null. Never raises."""
+        try:
+            from monad_bus import load_monad as _load
+        except Exception as e:   # noqa: BLE001
+            self.present(f"harness: monad_bus unavailable ({e}) — "
+                         "backend stays unset", center=None)
+            return {'chosen': None, 'why': f'import failed: {e}', 'alive': False}
+        be, rpt = _load(prefer, fifo=OBSERVE_FIFO, sock=PTOLEMY_SOCKET,
+                        spool=OBSERVE_SPOOL,
+                        log=lambda m: self.present(m, center=None))
+        self._backend = be
+        self.present(f"harness: monad backend = {rpt['chosen']} "
+                     f"({rpt['why']}); alive={rpt['alive']}", center=None)
+        return rpt
+
+    @property
+    def backend(self) -> Any:
+        return self._backend
+
+    @property
+    def governor(self) -> Any:
+        """The threading/memory admission governor (lazy). Memory management
+        falls out of threading: a job is admitted only if a slot is free AND
+        committed RAM + its estimate stays under
+        MemTotal + min(SwapTotal, MemTotal//2)."""
+        if self._governor is None:
+            try:
+                from monad_bus import ResourceGovernor
+                self._governor = ResourceGovernor()
+            except Exception as e:   # noqa: BLE001
+                self.present(f"harness: ResourceGovernor unavailable ({e})",
+                             center=None)
+        return self._governor
+
+    def search(self, query: str, engine: str = 'ddg') -> FaceResult:
+        """Harnessed search: the harness owns acquisition, so this routes
+        through browse() (fetch → strip → ingest → render stub), which
+        dedups repeat URLs. The BARE monad's search() opens the default
+        browser instead — that path is on RotaryBoxKiteMonad, not here."""
+        try:
+            from monad_browse import search_url
+        except Exception as e:   # noqa: BLE001
+            return FaceResult(ok=False, error=f'monad_browse: {e}',
+                              handled_by='harness.search')
+        return self.browse(search_url(query, engine))
+
+    def browse(self, url: str, ttl: float = 900.0, cls: str = 'web') -> FaceResult:
+        """Fetch `url`, strip to prose, feed the vocabulary monad, hand a
+        render summary to Paper's Hands. Governor-guarded (RAM + bandwidth
+        admission) and deduped against a recent-URL cache within `ttl`
+        seconds — 'locked behind the harness to keep repeat operations from
+        happening'. Never raises."""
+        now = time.time()
+        last = self._seen.get(url)
+        if last is not None and (now - last) < ttl:
+            return FaceResult(ok=True, data='deduped', handled_by='harness.browse')
+        try:
+            from monad_browse import fetch, strip_html, estimate_ram
+        except Exception as e:   # noqa: BLE001
+            return FaceResult(ok=False, error=f'monad_browse: {e}',
+                              handled_by='harness.browse')
+
+        gov = self.governor
+        # coarse pre-fetch estimate; refined once nbytes is known
+        job = None
+        cm = None
+        if gov is not None:
+            try:
+                from monad_bus import Job
+                job = Job(name=f"browse:{url[:56]}", tier=1,
+                          ram_peak=8 * 1024 * 1024, bw_cost=1.0 * 1024 * 1024)
+                cm = gov.guard(job)
+                cm.__enter__()
+            except Exception as e:   # noqa: BLE001
+                self.present(f"harness: governor guard skipped ({e})", center=None)
+                cm = None
+        try:
+            f = fetch(url)
+            if f.status == 0 or f.status >= 400:
+                return FaceResult(ok=False,
+                                  error=f'fetch {f.status} {f.error}'.strip(),
+                                  handled_by='harness.browse')
+            is_html = 'html' in (f.content_type or '').lower() or not f.content_type
+            if gov is not None and not gov.headroom_ok(
+                    estimate_ram(f.nbytes, is_html)):
+                self.present(f"harness: browse {url} — {f.nbytes} B exceeds the "
+                             "memory ceiling, page not parsed", center=None)
+                return FaceResult(ok=False, error='memory ceiling',
+                                  handled_by='harness.browse')
+            prose = strip_html(f.body, f.content_type, f.url_final)
+        finally:
+            if cm is not None:
+                try:
+                    cm.__exit__(None, None, None)
+                except Exception:   # noqa: BLE001
+                    pass
+
+        self._seen[url] = now
+        if len(self._seen) > 4096:
+            cut = now - ttl
+            self._seen = {k: v for k, v in self._seen.items() if v > cut}
+
+        r = self.observe(prose, cls=cls)
+        # render stitch — Paper's Hands / the BrowserWindow Face owns this later
+        self.present(f"[browse] {f.url_final} — {f.nbytes} B, "
+                     f"{len(prose.split())} words → {r.handled_by}",
+                     kind='browse', center='hands')
+        return FaceResult(ok=r.ok, data={'url': f.url_final, 'bytes': f.nbytes,
+                                         'words': len(prose.split()),
+                                         'ingest': r.handled_by, 'ingest_ok': r.ok},
+                          handled_by='harness.browse')
+
     # ── the writer pen — repository OS lock on monad3_c.bin ───────────────
     # Copied up from the monad side, where "nothing else writes the combined
     # store" (CombinedMonad.checkpoint / monad_combine.write / .write_c) was
@@ -690,9 +819,17 @@ class Harness:
         if self._fifo_write(msg):
             return FaceResult(ok=True, data=f"{len(prose.split())} words",
                               handled_by='daemon.fifo')
+        # A LOCAL (python) backend learns in-process now — spooling into a
+        # void only helps when a daemon will drain it later.
+        be = self._backend
+        local_backend = be is not None and getattr(be, 'name', '').startswith('python')
+        if local_backend:
+            self._observe_in_process(prose, pol)
+            return FaceResult(ok=True, data=f"{len(prose.split())} words",
+                              handled_by='harness.observe')
         if self._spool_write(msg):
             return FaceResult(ok=True, data='spooled', handled_by='observe.spool')
-        if self.monad_attached:
+        if self.monad_attached or be is not None:
             self._observe_in_process(prose, pol)
             return FaceResult(ok=True, data=f"{len(prose.split())} words",
                               handled_by='harness.observe')
@@ -762,21 +899,31 @@ class Harness:
             return False
 
     def _observe_in_process(self, prose: str, pol: Dict[str, float]) -> None:
-        """Last-resort direct ingest into an attached Monad — ONE pass,
-        vector weight: crank.learn(prose, weight=w_sem, w_ctx=w_ctx) does
-        the β gain and the A-matrix edge Δ in a single tokenise. Duck-typed;
-        a monad without .crank.learn is a silent no-op. Charges the repack
-        timer and folds if the knee is reached."""
-        crank = getattr(self._monad, 'crank', None)
-        if crank is None or not hasattr(crank, 'learn'):
-            return
-        try:
-            crank.learn(prose, weight=pol['w_sem'], w_ctx=pol['w_ctx'])
-        except TypeError:
-            crank.learn(prose, weight=pol['w_sem'])   # pre-vector monad
-        except Exception as e:
-            self.present(f"harness: in-process ingest failed ({e})", center=None)
-            return
+        """Last-resort direct ingest — used when the daemon FIFO and the
+        spool are both unreachable. Routes through the language-blind
+        backend if one is loaded (monad_bus.MonadBackend), else falls back
+        to the duck-typed `.crank.learn` on an attached Monad. A missing
+        target is a silent no-op. Charges the repack timer and folds at the
+        knee."""
+        did = False
+        if self._backend is not None:
+            try:
+                self._backend.learn(prose, pol['w_sem'],
+                                    pol.get('w_ctx', pol['w_sem']))
+                did = True
+            except Exception as e:   # noqa: BLE001
+                self.present(f"harness: backend ingest failed ({e})", center=None)
+        if not did:
+            crank = getattr(self._monad, 'crank', None)
+            if crank is None or not hasattr(crank, 'learn'):
+                return
+            try:
+                crank.learn(prose, weight=pol['w_sem'], w_ctx=pol['w_ctx'])
+            except TypeError:
+                crank.learn(prose, weight=pol['w_sem'])   # pre-vector monad
+            except Exception as e:   # noqa: BLE001
+                self.present(f"harness: in-process ingest failed ({e})", center=None)
+                return
         self._repack_charge(len(prose.encode('utf-8')))
         if self.repack_due():
             self.persist(also_c=True)

@@ -185,6 +185,70 @@ class RotaryBoxKiteMonad:
     def attach_harness(self, harness: Any) -> None:
         self.harness = harness
 
+    # ── basic search / browse — bare-monad minimum, harness supersedes ────
+    # Bare: the Monad does the ridiculously small number of ops it needs to
+    # learn on its own — `search()` just opens the default browser, and
+    # `browse_observe()` does a minimal fetch → strip → learn into its OWN
+    # field, guarded by the RAM + ½·RAM-swap ceiling so it never overwhelms
+    # the host. Inside the harness both delegate — the harness is the central
+    # acquisition/distribution bus and dedups repeat operations.
+    #
+    # KVM tie-in (deferred, monad note): when bare and with no BrowserWindow,
+    # poll the focused browser URL (Tesla/KVM.py) and feed it to
+    # browse_observe() — the Monad's eyes without a window, a handful of ops
+    # per page.
+
+    def _governor(self):
+        g = getattr(self, '_gov', None)
+        if g is None:
+            try:
+                from monad_bus import ResourceGovernor
+                g = ResourceGovernor()
+            except Exception:            # noqa: BLE001 — warn-not-fault
+                g = False
+            self._gov = g
+        return g or None
+
+    def search(self, query: str, engine: str = 'ddg'):
+        """Harnessed → the harness owns acquisition (dedup). Bare → open the
+        default browser (xdg-open via webbrowser)."""
+        if self.harness is not None and hasattr(self.harness, 'search'):
+            return self.harness.search(query, engine=engine)
+        try:
+            import webbrowser
+            from monad_browse import search_url
+            u = search_url(query, engine)
+            webbrowser.open(u)
+            return {'ok': True, 'opened': u, 'via': 'default-browser'}
+        except Exception as e:          # noqa: BLE001
+            return {'ok': False, 'error': str(e)}
+
+    def browse_observe(self, url: str):
+        """Harnessed → delegate. Bare → minimal fetch, ceiling-checked, strip,
+        learn into this Monad's own combined store. Never raises."""
+        if self.harness is not None and hasattr(self.harness, 'browse'):
+            return self.harness.browse(url)
+        try:
+            from monad_browse import fetch, strip_html, estimate_ram
+        except Exception as e:          # noqa: BLE001
+            return {'ok': False, 'error': f'monad_browse: {e}'}
+        f = fetch(url)
+        if f.status == 0 or f.status >= 400:
+            return {'ok': False, 'status': f.status, 'error': f.error}
+        gov = self._governor()
+        is_html = 'html' in (f.content_type or '').lower() or not f.content_type
+        if gov is not None and not gov.headroom_ok(estimate_ram(f.nbytes, is_html)):
+            return {'ok': False, 'error': 'memory ceiling', 'nbytes': f.nbytes}
+        prose = strip_html(f.body, f.content_type, f.url_final)
+        n = 0
+        if _hear is not None and self.store is not None and prose:
+            try:
+                _hear(self.store.english, prose, echo=0)
+                n = len(prose.split())
+            except Exception:          # noqa: BLE001
+                pass
+        return {'ok': True, 'url': f.url_final, 'nbytes': f.nbytes, 'words': n}
+
     def checkpoint(self, also_c: bool = False) -> Optional[str]:
         """Persist the combined store iff mutated. The sedenion WINDOW owns
         calling this — on its interval and on exit."""
