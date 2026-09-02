@@ -253,6 +253,39 @@ Caustic: σ → 0 (ZD boundary, the edge of the thing)
 
 ---
 
+## GRANULARITY = DEPTH-OF-VOCABULARY DATASET SELECT (2026-09-01)
+
+The flashlight's granularity does not just resolve context — it **selects which
+`.bin` speaks**. Deeper granularity → a deeper vocabulary dataset → the register
+"necessarily drifts into dissertation." Ptolemy picks the language appropriate
+to the prompt.
+
+**Separate `.bin` per domain, on purpose:**
+
+- `english.bin` — conversational / surface parsing. The default carrier.
+- `maths_physics.bin` — mathematics and physics. Loaded to drift *intentionally*
+  into mathematical speak. (This is why Archimedes — the one independent,
+  active-collaborator face — gets the mathematical and physics bin files.)
+- `code.bin` — programming languages. Built by WordNet modelling, sent off
+  *after both PEP and PIP* for the Python monad.
+
+**Why separate, not merged:** so the granules are all the same scale within a
+dataset and **do not poison any other generalized dataset**. When a prompt needs
+more than a surface English parse, you select the deeper dataset; it adds
+**temporary weight** to `english.bin` for that turn and keeps the nitty-gritty
+out of conversational English, then releases.
+
+- [ ] `english.bin` stays the carrier; domain `.bin`s attach as temporary weight per turn
+- [ ] `maths_physics.bin` — build; hand to Archimedes; register with the Diagnostic Support Harness
+- [ ] `code.bin` — WordNet-model the programming-language vocabulary; ingest PEP + PIP corpora; Python monad
+- [ ] granularity selector maps flashlight depth → which domain `.bin` is weighted in
+- [ ] register/verdict: a domain `.bin` must not shift `english.bin`'s own granule scale (poison check)
+
+Related: PtolemyDesktop research-desktop architecture (memory `project-ptolemy-desktop`);
+[[project-scalar-context-paper]] (flashlight = granularity not context).
+
+---
+
 ## v3.2 — The Face (React Native / Expo)
 
 *Added 2026-05-30. The primary public interaction point for Holcus.*
