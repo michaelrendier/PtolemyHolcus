@@ -525,23 +525,29 @@ class Harness:
 
     @property
     def lineage(self) -> Any:
-        """Live reference to SedenionFactoralRelativity/engine/lineage.py —
-        decompose(), TIERS, FactoralLineageEngine, run(), all of it. This is
+        """Live reference to GenerationalLineage/engine/lineage.py —
+        decompose(), TIERS, GenerationalLineageEngine, run(), all of it. This is
         what a tier-informed `chooser` in ToolsetRegistry.reach() would
         consult; format_derivation() below is a display formatter over the
-        SAME module, not a separate thing."""
+        SAME module, not a separate thing.
+
+        (Repo was SedenionFactoralRelativity -> FactoralDecomposition ->
+        GenerationalLineage; the older dir names are tried as a fallback.)"""
         if self._lineage_module is None:
             import os
             import sys
             _theplace = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            _sfr = os.path.join(_theplace, 'SedenionFactoralRelativity')
-            if _sfr not in sys.path:
-                sys.path.insert(0, _sfr)
+            _cands = [os.path.join(_theplace, d) for d in
+                      ('GenerationalLineage', 'FactoralDecomposition',
+                       'SedenionFactoralRelativity')]
+            _repo = next((d for d in _cands if os.path.isdir(d)), _cands[0])
+            if _repo not in sys.path:
+                sys.path.insert(0, _repo)
             try:
                 from engine import lineage as _lineage_mod
             except ImportError as e:
                 raise RuntimeError(
-                    f"generational lineage engine not reachable at {_sfr}: {e}")
+                    f"generational lineage engine not reachable at {_repo}: {e}")
             self._lineage_module = _lineage_mod
         return self._lineage_module
 
