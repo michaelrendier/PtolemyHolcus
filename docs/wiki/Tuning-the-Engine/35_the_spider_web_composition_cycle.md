@@ -203,6 +203,22 @@ Also added, all `UNTESTED`:
 
 19 ledger rows, all `UNTESTED`.
 
+### Correction 2026-09-04 — paragraphs are anisotropic
+
+The `Radius` abstraction is wrong for paragraphs. A radius is a straight,
+uniform spoke — fine for one **through-line of argument**, but a paragraph is
+**not** a radius: its shape is not uniform, it sits at a non-uniform depth, and
+its boundary is irregular. Same for sentence length — arbitrary, set by the
+*local* conversationally-appropriate granularity, not a global `scale`.
+
+So: a paragraph = a **cell of the gasket packing** — a curvilinear region
+bounded by several tangent arcs, with an integer curvature (size) but an
+**anisotropic boundary**. Ring 2's gauge must produce that cell shape (a
+boundary polygon of tangent arcs), not `r = const`; sentence generation pulls a
+**variable** number of clause-molecules from the *local* `b/c` at that point in
+the weave. The `boxkite_orbweaver_monad.py` `Radius` / fixed-`depth` `Block`
+model is flagged for this fix.
+
 ### As-yet-untested claims
 
 1. A full document = a two-spiral web on a ZD-hub box-kite frame; the Monad
