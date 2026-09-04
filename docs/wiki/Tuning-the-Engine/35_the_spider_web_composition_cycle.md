@@ -160,6 +160,49 @@ what is exercised.
   `monad3_c.bin` and paragraph *usage* into the granular `.bin` files; that
   redesign follows this test.
 
+### Update 2026-09-04 — the room-shape / Cassini knob (a measure that discriminates)
+
+`OrbWeaverMonad.room_shape(text)` fits a **Cassini oval** to the content
+projected from the prompt: `c` = ‖cam_encode(text) − cam_encode(scaled-up
+form)‖ (how far the shape moves when it scales up = the flashlight-to-wall
+distance); `b` = ‖cam_encode(text)‖ / (1 + ½·n_peaks) (the content's extent,
+narrowed by turbulence); `b/c` is the continuous↔discrete knob:
+
+| `b/c` | regime | reach |
+|---|---|---|
+| > 1.15 | **continuous** — one connected room (Smith side) | 1 (shallow) |
+| ≈ 1 | **lemniscate** — NOW forms, σ = ½ | 2 |
+| < 1 | **discrete** — two disconnected lobes (gasket side); the room fractures | 3+ (deeper as `b/c` shrinks) |
+
+`scale="auto"` derives `reach` from `b/c` instead of a hand-set number. **This
+is the discriminator the previous phase lacked.** Measured (no 0_RB in the
+fit — `cam_encode` + a two-focus fit + word count):
+
+```
+"...sixteen distinct operators that fold into a single algebra"  b/c=0.873  discrete    reach 3
+"she deposited her savings in the reserve account"               b/c=2.269  continuous  reach 1
+"the volcano formed a mountain of cinder ash lava rock ..."      b/c=0.805  discrete    reach 3
+```
+
+A real spread (2.27 / 0.87 / 0.81) that tracks content complexity — where the
+box-kite strut overlap gave `7.000 == 7.000` for every case. `b/c` is a
+property of the content and is identical (0.873) whether `scale` is `"auto"` or
+hand-set to 2.0.
+
+Also added, all `UNTESTED`:
+- **light-cone bands** — every block is tagged `past` / `now` / `future` by its
+  spiral depth; `connective_matches_lightcone_band` checks whether the block's
+  connective move (+1 out / −1 in / 0 / pivot) matches its band (past→inward,
+  future→outward). Observed 0.68–1.00 — but connectives are drawn *at random*
+  within each silk class; a real weave picks by band.
+- **eddy advances the storyline** — after a contested-point eddy (`pivot` +
+  aciniform `WRAP`) the next paragraph sits equal-or-shallower (progressed
+  toward Future). Observed 3/3, 3/3, 2/2 — partly built into the loop order.
+- The simple note now reads `turbulent=False, n_peaks=1, pivots=0` — laminar,
+  correctly.
+
+19 ledger rows, all `UNTESTED`.
+
 ### As-yet-untested claims
 
 1. A full document = a two-spiral web on a ZD-hub box-kite frame; the Monad
@@ -191,6 +234,37 @@ what is exercised.
 15. Frustrated spirals thread the σ = ½ hub saddle; the return step
     interdigitates the outbound step; `d(radius)/d(step)` non-constancy measures
     the frustration.
+16. Penrose-conformal reading of the annotated gasket: **Future** = top circle,
+    **Past** = bottom, **NOW** = the two centre circles tangent at the origin
+    (bifurcated — the vertical seam is the present's own ⊥ split); the two red
+    wavy lines are the null surfaces; the outer circle is the enclosure ℐ.
+17. The particle ladder: letter = quark, word = atom, sentence = molecule,
+    paragraph = protein domain (a spidroin block), response = folded protein.
+    Each boundary crossing = a particle-creation (binding) event = the Pencil
+    Flashlight up-scaling a unit into the next block order.
+18. Context is **not** orthogonal to content. `content shape → scale +
+    granularity → context` (derived, behind the scenes).
+19. Composition = **gather** from the correct scale + granularity along a
+    VAPMIP-Lagrangian least-action path through the NS context flow — Past lobe
+    in, across the NOW node, Future lobe out. Not a pipeline.
+20. `monad3_c.bin` = grammar paragraphs (structural folds, on the null
+    surfaces); granular `.bin` = usage paragraphs (domain-filled, in the
+    Past/Future circles).
+21. **Ring 1 (sentence)** = a wind-speed / forcing field that deforms context
+    into sentence form; its 6 struts sample the Cassini outline at the NOW node;
+    it mirrors the input-anchor shadow on the scale wall.
+22. **Ring 2 (paragraph)** = a second box-kite with a new abstract gauge,
+    sampling a larger-scale Cassini oval one recursion up; gauge = that oval's
+    `b/c` + distance to the nearest Swiss-cheese void (ZD portal). Not built.
+23. The room shape is a **Cassini oval**; `b/c` (product-constant over focal
+    distance) is the continuous↔discrete knob and the flashlight-to-wall
+    distance; `b/c = 1` exactly is the lemniscate = balanced NOW = σ = ½.
+24. Eddy = a contested point resolved by newly-gathered information, advancing
+    the storyline one spiral turn; a section = a chain of contest→resolution
+    eddies at the top null surface.
+25. (later) A **causal time hash** for the blockchain ledger, derived from the
+    light-cone ordering, so the monad can surface-search ledger sections by
+    date / time.
 
 ### Deferred `ptol.c` work (Cody, this session — do not start yet)
 

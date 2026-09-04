@@ -32,6 +32,7 @@ as a template layer, not a claimed NLG system.
 """
 from __future__ import annotations
 
+import math
 import random
 import re
 from dataclasses import dataclass, field
@@ -114,6 +115,33 @@ _STOP = set("a an the of to in on and or is are was were be been it its this "
             "that these those with for as at by from into over under".split())
 
 
+# ── the room-shape calc — a standalone Cassini-oval fit to the content
+#    projected from the prompt.  b/c is the continuous<->discrete knob and
+#    IS the flashlight-to-wall distance: b/c > 1 one connected room
+#    (continuous / Smith), b/c = 1 the lemniscate (NOW forms, sigma=1/2),
+#    b/c < 1 two disconnected lobes (discrete / gasket, the room fractures).
+#    No 0_RB in the running calc — cam_encode + a two-focus fit + word count.
+def _cassini_r2(theta: float, a: float, b: float) -> Optional[float]:
+    """Cassini oval, foci (+-a, 0), product b^2, polar:
+    r^2 = a^2 cos2t +- sqrt(b^4 - a^4 sin^2 2t).  Returns the outer r^2 or
+    None where the curve does not reach this angle (the b<a gap)."""
+    s2 = math.sin(2 * theta)
+    disc = b ** 4 - a ** 4 * s2 * s2
+    if disc < 0:
+        return None
+    return a * a * math.cos(2 * theta) + math.sqrt(disc)
+
+
+@dataclass
+class RoomShape:
+    foci_distance: float             # c — how far the shape moves when scaled up
+    lobe_width: float               # b — the content's own extent, turbulence-widened
+    ratio: float                    # b / c
+    regime: str                     # continuous | lemniscate | discrete
+    node: List[float]               # NOW — the midpoint of the two foci in cam space
+    sample6: List[float]            # 6 Cassini radii sampled toward the node tip
+
+
 @dataclass
 class Radius:
     direction: str
@@ -129,12 +157,13 @@ class Block:
     text: str
     connective_out: str = ""
     move: Any = 0
+    tense: str = ""                 # past | now | future (light-cone band)
 
 
 @dataclass
 class Document:
     genre: str
-    scale: float
+    scale: Any
     reach: int
     turbulent: bool
     bridge: str
@@ -142,19 +171,26 @@ class Document:
     radii: List[Radius]
     scaffold: List[str]
     blocks: List[Block]
+    room: Optional[RoomShape] = None
     ledger_rows: List[Relation] = field(default_factory=list)
 
     def render(self) -> str:
+        r = self.room
+        room_line = (f"ROOM  : Cassini b/c={r.ratio:.3f}  {r.regime}  "
+                     f"(c={r.foci_distance:.3f} b={r.lobe_width:.3f})  "
+                     f"sample6={[round(x, 2) for x in r.sample6]}"
+                     if r else "ROOM  : (not computed)")
         L = [f"[{self.genre}  scale={self.scale}  reach={self.reach}"
              f"  {'turbulent' if self.turbulent else 'laminar'}"
              f"  radii={len(self.radii)}  blocks={len(self.blocks)}]",
+             room_line,
              f"BRIDGE: {self.bridge}",
              f"FRAME : {self.frame}", "SCAFFOLD (centre->out):"]
         L += [f"    {s}" for s in self.scaffold]
-        L.append("CAPTURE (out->in):")
+        L.append("CAPTURE (out->in, along the lemniscate):")
         for b in self.blocks:
             tag = b.kind + (f"/{b.radius}" if b.radius else "")
-            L.append(f"    ·d{b.depth} {tag}: {b.text}"
+            L.append(f"    ·d{b.depth} [{b.tense or '—':^6}] {tag}: {b.text}"
                      + (f"   -> [{b.connective_out}]" if b.connective_out else ""))
         return "\n".join(L)
 
@@ -238,8 +274,50 @@ class OrbWeaverMonad:
     def _conn(self, cls: str, rng: random.Random) -> Tuple[str, Any]:
         return rng.choice(_CONNECTIVES.get(cls, ["and"])), _SPIRAL_MOVE.get(cls, 0)
 
+    # ── the room-shape calc (standalone; no 0_RB) ────────────────────────
+    def room_shape(self, text: str, words: List[str], peaks: int) -> RoomShape:
+        f1 = cam_encode(text)
+        bridge = assemble_sentence("contextualize", words)   # the scaled-up form
+        f2 = cam_encode(bridge)
+        c = math.sqrt(sum((x - y) ** 2 for x, y in zip(f1, f2))) or 1e-9
+        norm1 = math.sqrt(sum(x * x for x in f1)) or 1e-9
+        b = norm1 / (1.0 + 0.5 * peaks)          # narrower room when turbulent
+        ratio = b / c
+        regime = ("continuous" if ratio > 1.15
+                  else "lemniscate" if ratio >= 0.9 else "discrete")
+        node = [(x + y) / 2.0 for x, y in zip(f1, f2)]
+        # sample the Cassini outline toward the node tip (theta -> pi/4)
+        a = c / 2.0
+        s6: List[float] = []
+        for i in range(6):
+            th = (math.pi / 4.0) * (i + 0.5) / 6.0
+            r2 = _cassini_r2(th, a, b)
+            s6.append(math.sqrt(r2) if r2 and r2 > 0 else 0.0)
+        return RoomShape(foci_distance=c, lobe_width=b, ratio=ratio,
+                         regime=regime, node=node, sample6=s6)
+
+    @staticmethod
+    def _reach_from_room(room: RoomShape, genre: str) -> int:
+        cap = _GENRE.get(genre, _GENRE["paper"])["reach_cap"]
+        # continuous = one connected room = shallow;
+        # discrete = fractured lobes = deeper, more structure
+        if room.regime == "continuous":
+            r = 1
+        elif room.regime == "lemniscate":
+            r = 2
+        else:                                    # discrete: deeper as b/c shrinks
+            r = 3 + (1 if room.ratio < 0.6 else 0)
+        return max(1, min(cap, r))
+
+    @staticmethod
+    def _tense(depth: int, reach: int) -> str:
+        if reach <= 1:
+            return "now"
+        frac = (reach - depth) / (reach - 1)     # 0 deepest (past) .. 1 shallow (future)
+        return "past" if frac < 0.34 else "future" if frac > 0.66 else "now"
+
     # ── the cycle ────────────────────────────────────────────────────────
-    def weave(self, text: str, scale: float = 2.0, genre: str = "paper",
+    def weave(self, text: str, scale: Any = 2.0, genre: str = "paper",
               words: Optional[List[str]] = None,
               root_vector: Optional[List[int]] = None,
               seed: int = 20260903) -> Document:
@@ -248,7 +326,11 @@ class OrbWeaverMonad:
             words, root_vector = self._sniff(text)
         rv = list(root_vector)
         turbulent, peaks = self._turbulence(rv)
-        reach = self._reach(scale, genre)
+        room = self.room_shape(text, words, peaks)
+        # scale="auto" -> reach from the content's own room shape;
+        # a number -> the old hand path (kept for A/B).
+        reach = (self._reach_from_room(room, genre) if scale == "auto"
+                 else self._reach(scale, genre))
         gblocks = _GENRE.get(genre, _GENRE["paper"])["blocks"]
 
         # STRUCTURE ---------------------------------------------------------
@@ -266,47 +348,50 @@ class OrbWeaverMonad:
             for r in radii:
                 scaffold.append(f"[{dn}] {r.direction}: {r.text}")
 
-        # CAPTURE SPIRAL (out -> in) ------------------------------------
+        # CAPTURE SPIRAL (out -> in, along the lemniscate: in through the
+        # Past lobe, across the NOW node, out through the Future lobe) ----
         blocks: List[Block] = []
         if "bridge" in gblocks:
             blocks.append(Block("bridge", 0, None, bridge,
-                                *self._conn("throughline", rng)))
+                                *self._conn("throughline", rng), tense="now"))
         if "frame" in gblocks:
-            blocks.append(Block("scope", 0, None, frame_s, *self._conn("scope", rng)))
+            blocks.append(Block("scope", 0, None, frame_s,
+                                *self._conn("scope", rng), tense="now"))
 
         for depth in range(reach, 0, -1):
             dn = _DEPTH_NAME.get(depth, f"level {depth}")
+            tn = self._tense(depth, reach)
             for pos, r in enumerate(radii):
                 cw, mv = self._conn("elaborate", rng)
                 blocks.append(Block("paragraph", depth, r.direction,
                                     f"{cw.capitalize()}, {r.text[:-1]} at the "
-                                    f"{dn} level.", cw, mv))
+                                    f"{dn} level.", cw, mv, tense=tn))
                 if len(words) > pos + 1:
                     hw, hm = self._conn("exemplify", rng)
                     blocks.append(Block("paragraph", depth, r.direction,
                                         f"{hw.capitalize()}: {words[pos + 1]}.",
-                                        hw, hm))
-                # FRUSTRATION: turbulent -> reverse along the strut, recap,
-                # jump spoke.  The return step sits next to the outbound
-                # step (same depth, adjacent radius) — interdigitated.
+                                        hw, hm, tense=tn))
+                # FRUSTRATION / EDDY: turbulent -> the point is contested at
+                # the top red line; reverse along the strut, recap, jump
+                # spoke.  The return step interdigitates the outbound step.
                 if turbulent and depth == reach and pos < len(radii) - 1:
                     rw, rm = self._conn("reverse", rng)
                     blocks.append(Block("pivot", depth, r.direction,
                                         f"{rw.capitalize()}, the {r.direction} axis "
-                                        f"only carries so far here.", rw, rm))
+                                        f"only carries so far here.", rw, rm, tense=tn))
                     ww, wm = self._conn("wrap", rng)
                     blocks.append(Block("wrap", depth, r.direction,
                                         f"{ww.capitalize()}, {r.text[:-1]} — carried "
-                                        f"back to the hub.", ww, wm))
+                                        f"back to the hub.", ww, wm, tense=tn))
         if "wrap" in gblocks:
             ww, wm = self._conn("wrap", rng)
             blocks.append(Block("wrap", 0, None, f"{ww.capitalize()}, {bridge[:-1]}.",
-                                ww, wm))
+                                ww, wm, tense="now"))
 
-        rows = self._measure(radii, blocks, turbulent, peaks, rng)
+        rows = self._measure(radii, blocks, room, turbulent, peaks, reach, rng)
         return Document(genre=genre, scale=scale, reach=reach, turbulent=turbulent,
                         bridge=bridge, frame=frame_s, radii=radii,
-                        scaffold=scaffold, blocks=blocks, ledger_rows=rows)
+                        scaffold=scaffold, blocks=blocks, room=room, ledger_rows=rows)
 
     def weave_via(self, rbk_monad: Any, text: str, **kw) -> Document:
         """Heavy path: use a fully-built RotaryBoxKiteMonad for the real
@@ -317,7 +402,8 @@ class OrbWeaverMonad:
 
     # ── measurement (UNTESTED — new model, tiny n) ──────────────────────
     def _measure(self, radii: List[Radius], blocks: List[Block],
-                 turbulent: bool, peaks: int, rng: random.Random) -> List[Relation]:
+                 room: RoomShape, turbulent: bool, peaks: int, reach: int,
+                 rng: random.Random) -> List[Relation]:
         rows: List[Relation] = []
         para = [b for b in blocks if b.kind == "paragraph" and b.radius]
         if self.box_kite is not None and para and len(radii) > 1:
@@ -356,6 +442,65 @@ class OrbWeaverMonad:
                      f"pivots={sum(1 for b in blocks if b.kind == 'pivot')}",
             detail="mechanism wired; not validated against read-back",
             group="spider-web-composition"))
+
+        # ── the room-shape / Cassini knob: does content shape's b/c set a
+        # sensible reach, and does 'discrete' (b/c<1) really carry more
+        # structure than 'continuous' (b/c>1)? ──────────────────────────
+        rows.append(Relation(
+            name="orbweaver.room_shape_sets_reach",
+            claim="content-shape Cassini b/c (flashlight-to-wall) sets reach: "
+                  "continuous(>1.15)->1  lemniscate(~1)->2  discrete(<1)->deeper",
+            status=Status.UNTESTED,
+            observed=f"b/c={room.ratio:.3f}  regime={room.regime}  "
+                     f"reach={reach}  auto_reach={self._reach_from_room(room, 'paper')}",
+            detail="the room is fitted from cam_encode(text) vs its scaled-up "
+                   "form; no 0_RB in the fit",
+            group="spider-web-composition"))
+
+        # ── the lemniscate flow: does each block's connective point the way
+        # its light-cone band (past/now/future) says it should? ─────────
+        cflow = [b for b in blocks if b.connective_out and b.tense]
+        if cflow:
+            ok = 0
+            for b in cflow:
+                mv = b.move
+                if b.tense == "now":
+                    ok += 1
+                elif b.tense == "past" and mv in (-1, 0):      # gathering -> inward
+                    ok += 1
+                elif b.tense == "future" and mv == 1:          # depositing -> outward
+                    ok += 1
+                elif mv == "pivot":                            # eddy — counted apart
+                    ok += 1
+            rows.append(Relation(
+                name="orbweaver.connective_matches_lightcone_band",
+                claim="a block's outbound connective move (+1/-1/0/pivot) matches "
+                      "its past/now/future band (past->inward, future->outward)",
+                status=Status.UNTESTED,
+                observed=f"match {ok}/{len(cflow)} = {ok / len(cflow):.2f}",
+                detail="connective classes are drawn at random within each silk "
+                       "class here; a real weave would pick by band",
+                group="spider-web-composition"))
+
+        # ── eddies advance the storyline: after a pivot+wrap, is the next
+        # paragraph shallower (progressed toward Future)? ───────────────
+        pivots = [i for i, b in enumerate(blocks) if b.kind == "pivot"]
+        if pivots:
+            adv = 0
+            for i in pivots:
+                pd = blocks[i].depth
+                nxt = next((blocks[j] for j in range(i + 1, len(blocks))
+                            if blocks[j].kind == "paragraph"), None)
+                if nxt is not None and nxt.depth <= pd:
+                    adv += 1
+            rows.append(Relation(
+                name="orbweaver.eddy_advances_storyline",
+                claim="after a contested-point eddy (pivot + wrap) the next "
+                      "paragraph sits at an equal-or-shallower depth",
+                status=Status.UNTESTED,
+                observed=f"advanced {adv}/{len(pivots)}",
+                detail="depth as a proxy for storyline progression",
+                group="spider-web-composition"))
         return rows
 
 
@@ -366,10 +511,13 @@ if __name__ == "__main__":
 
     cases = [
         ("the engine contains sixteen distinct operators that fold into a "
-         "single algebra", 2.0, "paper"),
-        ("she deposited her savings in the reserve account", 1.0, "note"),
+         "single algebra", "auto", "paper"),
+        ("she deposited her savings in the reserve account", "auto", "note"),
         ("the volcano formed a mountain of cinder ash lava rock and time "
-         "under pressure and heat", 3.0, "report"),
+         "under pressure and heat", "auto", "report"),
+        # A/B: the same input on the hand-set scale path
+        ("the engine contains sixteen distinct operators that fold into a "
+         "single algebra", 2.0, "paper"),
     ]
     for text, scale, genre in cases:
         print(f"\n{'=' * 72}\ninput: {text!r}\n       scale={scale} genre={genre}")
