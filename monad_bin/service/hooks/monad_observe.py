@@ -20,12 +20,23 @@ A prompt and the response it draws are linked by a pair id (stashed per
 session in ~/.ptolemy/.pair-<session>), so the daemon can log the
 prompt-bytes -> response-bytes sample for a response-scaling engine.
 
+Paragraph recognition (semantic side). An `external` prompt of more than
+one sentence IS a paragraph, by definition — the semantic section of the
+Monad is the paragraph builder along paragraph grammar. When that happens
+this hook drops a best-effort sidecar record (pair id + the raw sentences)
+to ~/.ptolemy/paragraphs.spool.jsonl. The higher-order prime semantic hash
+over that structure (semantic_paragraph.paragraph_hash / context_hash_v2)
+is computed DOWNSTREAM by the paragraph-builder — never here, because it
+loads WordNet and this hook must not block the prompt. The normal
+`external <pid>` FIFO message is unchanged; the sidecar is purely additive.
+
 This hook must never block the prompt and never fail the turn: everything is
 best-effort and it always exits 0.
 """
 import json
 import os
 import sys
+import time
 
 # where harness.py lives — override with MONAD_HARNESS_DIR if the tree moves
 _VAPMIP = os.environ.get(
@@ -90,6 +101,33 @@ def _pair_id(cls, session_id):
         return pid or None
     except OSError:
         return None
+
+
+_PARA_SPOOL = os.path.expanduser('~/.ptolemy/paragraphs.spool.jsonl')
+
+
+def _paragraph_sidecar(prose, pid, session_id):
+    """A prompt of >1 sentence is a paragraph. Record recognition + the raw
+    sentences for the semantic section's paragraph-builder; the prime
+    semantic hash is computed downstream (it loads WordNet). Best-effort."""
+    try:
+        from semantic_paragraph import split_sentences
+        sents = split_sentences(prose)
+        if len(sents) < 2:
+            return
+        rec = {
+            'kind': 'paragraph',
+            'pair': pid,
+            'session': session_id,
+            'ts': round(time.time(), 3),
+            'n_sentences': len(sents),
+            'sentences': sents,
+        }
+        os.makedirs(os.path.dirname(_PARA_SPOOL), exist_ok=True)
+        with open(_PARA_SPOOL, 'a', encoding='utf-8') as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + '\n')
+    except Exception:
+        pass
 
 
 def _emit(msg, fifo, spool):
@@ -157,6 +195,9 @@ def main():
     hdr = f"{cls} {pid}" if pid else cls
     msg = f"{hdr}\n" + "\n".join(_sentences(prose)) + "\n.\n"
     _emit(msg, FIFO, SPOOL)
+
+    if cls == 'external':
+        _paragraph_sidecar(prose, pid, session_id)
 
 
 if __name__ == '__main__':

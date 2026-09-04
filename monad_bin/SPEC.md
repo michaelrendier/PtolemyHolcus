@@ -128,7 +128,49 @@ and the *builder*, and let each user rebuild `monad.bin` on-box from whatever
 corpus subset they point it at. Factor bins (`monad_*.bin`, each ≤ 36 MB here)
 are the intermediate rebuild artifacts and can also be shipped individually.
 
-## 8. Reproduce
+## 8. Conversational ingest and paragraph recognition
+
+`service/` is the live-ingest path (Cody, 2026-08): the Monad also learns
+passively from conversation. The Claude Code hook `service/hooks/monad_observe.py`
+is wired `UserPromptSubmit → external`, `Stop → internal`; it prose-sanitises
+the turn (`harness.strip_to_prose`), splits it (`harness._sentences`) and
+writes a non-blocking FIFO message to the daemon (`PtolC/daemon.c`), spooling
+to `~/.ptolemy/observe.spool` if the daemon is down. The FIFO header is
+`<class> [pair_id]` with `class ∈ {external, internal, document}` (exact
+`strcmp` in the C daemon — the token set is fixed); `w_sem` weights are
+external 1.5, internal 0.9. A prompt and its response share a `pair_id`
+(stashed at `~/.ptolemy/.pair-<session>`). The hook must never block the
+prompt or fail the turn — every step is best-effort and it always exits 0.
+
+**Paragraph recognition (semantic side).** The semantic section of the Monad
+is the *paragraph builder along paragraph grammar* (phonetic ↔ context,
+semantic ↔ content/prompt). An `external` prompt of more than one sentence
+**is a paragraph, by definition**. When `monad_observe.py` sees that, it
+appends a best-effort sidecar record to `~/.ptolemy/paragraphs.spool.jsonl`:
+
+```
+{"kind":"paragraph","pair":<pid|null>,"session":<sid>,"ts":<epoch>,
+ "n_sentences":<n>,"sentences":[<raw sentence>, …]}
+```
+
+This is purely additive — the normal `external <pid>` FIFO message is
+unchanged. The **higher-order prime semantic hash** over that structure is
+computed *downstream* by the paragraph-builder, never in the hook (it loads
+WordNet). `semantic_paragraph.paragraph_hash(sentences)` composes the
+original per-word prime semantic hash (`context_hash_v2.code_omega` /
+`wordnet_boxkite.context_code` — squarefree product of the primes for the
+WordNet relations a synset fires) up one structural level:
+
+- `sentence_omega` = radical of the product of the sentence's content-word
+  codes — the squarefree **set** of relations that sentence engages;
+- `paragraph_omega` = product of the sentence omegas — its prime
+  factorisation gives `(relation, sentence-count)` pairs: `support` is the
+  paragraph's semantic footprint, each exponent is how many sentences
+  sustain that relation;
+- `grammar` = per-sentence dominant relation in reading order (branching
+  channel `hyponyms` dropped, as `code_omega` does) — the argument arc.
+
+## 9. Reproduce
 
 ```
 python3 bootstrap.py            # canonical: project corpus first, then general language
