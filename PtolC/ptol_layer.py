@@ -12,8 +12,18 @@ usage:  python3 ptol_layer.py <prompt>
 
 import sys, os, re, pickle, subprocess, math, glob
 
-BIN_DIR  = '/media/rendier/0123-4567/PTorrent/bin_archive/clean'
-PTOL_BIN = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ptol')
+_HERE = os.path.dirname(os.path.abspath(__file__))          # VAPMIP/PtolC
+# The holcus_monad_*.bin vocabularies. Moved off the exFAT SD card onto the
+# NVMe tree (2026-07-31); keep the old mount as a last-resort fallback.
+_BIN_CANDIDATES = [
+    os.environ.get('HOLCUS_BIN_DIR', ''),
+    os.path.join(_HERE, '..', '..', 'PTorrent', 'bin_archive', 'clean'),
+    '/media/rendier/0123-4567/PTorrent/bin_archive/clean',
+]
+BIN_DIR = next((os.path.abspath(p) for p in _BIN_CANDIDATES
+                if p and os.path.isdir(p)),
+               os.path.abspath(_BIN_CANDIDATES[1]))
+PTOL_BIN = os.path.join(_HERE, 'ptol')
 
 # ── All .bin files are tools — import the full domain, define nothing ─────────
 # Scan BIN_DIR for every holcus_monad_*.bin. The layer name is derived from

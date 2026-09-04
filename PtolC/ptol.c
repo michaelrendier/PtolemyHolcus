@@ -838,13 +838,34 @@ static void console_speak(const char *prompt, char out[1024],
     memset(words, 0, sizeof(words));
     get_monad_words(v, _x, thresh, words, elem);
 
+    /* Spiral order (ZD -> great circle), DISTINCT words only. A degenerate
+     * prompt ("hello") fires the same nearest word on every shell and the
+     * layer can hand back several copies per shell — the shadow is the SET
+     * the path lands on, each word once. (Sentence-mode placeholder; the
+     * real assembler is future work — see Tuning-the-Engine/36.) */
+    char seen[16][64];
+    int  nseen = 0;
     size_t o = 0;
-    for (int i = 0; i < 16; i++) {
+    for (int i = 0; i < 16 && o < 1024; i++) {
         int k = idx[i];
         if (fabs(v[k]) < thresh_norm || !words[k][0]) continue;
-        int wr = snprintf(out + o, 1024 - o, "%s%s", o ? " " : "", words[k]);
-        if (wr < 0 || (size_t)wr >= 1024 - o) break;
-        o += (size_t)wr;
+        char cell[256];
+        strncpy(cell, words[k], sizeof cell - 1);
+        cell[sizeof cell - 1] = '\0';
+        for (char *tok = strtok(cell, " \t"); tok; tok = strtok(NULL, " \t")) {
+            int dup = 0;
+            for (int s = 0; s < nseen; s++)
+                if (strcmp(seen[s], tok) == 0) { dup = 1; break; }
+            if (dup) continue;
+            if (nseen < 16) {
+                strncpy(seen[nseen], tok, 63);
+                seen[nseen][63] = '\0';
+                nseen++;
+            }
+            int wr = snprintf(out + o, 1024 - o, "%s%s", o ? " " : "", tok);
+            if (wr < 0 || (size_t)wr >= 1024 - o) { o = 1024; break; }
+            o += (size_t)wr;
+        }
     }
     if (o == 0) strncpy(out, "(no words fired)", 1024);
 

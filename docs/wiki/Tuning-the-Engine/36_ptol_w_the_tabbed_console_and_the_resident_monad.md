@@ -74,6 +74,20 @@ are all present; the unbuilt ones are **greyed and unselectable**:
 input line is empty (so number/arrow keys still type normally). `q` / `Ctrl-D`
 quits and sends `{"t":"quit"}` so the resident `ptol` exits cleanly.
 
+## Follow-ups (2026-09-04, same day)
+
+- **`console_speak` returns a distinct set, not repeats.** A degenerate prompt
+  ("hello") fires the same nearest word on every one of the 16 shells, and
+  `ptol_layer.py` can hand back several copies per shell. The Chat Tab was
+  showing `hello` ~50×. The spiral walk now keeps each word once, in
+  first-landing order — the shadow is the set the path lands on. Still the
+  sentence-mode placeholder.
+- **The support room is a drift watch, not a heartbeat.** `SupportHarness.PERIOD`
+  went 8 s → 3 h, and the periodic poll (`radio_check(quiet=True)`) now posts
+  **only** faces that are drifting or errored. A nominal check-in says nothing;
+  `/radio` still prints the full roster on demand. Their job is to report when
+  drift starts, not to fill the chat.
+
 ## As-yet-untested / deferred
 
 1. `mh_pump` Chat-buffer drain — support lines (`« Face »`, `« Ptolemy »
