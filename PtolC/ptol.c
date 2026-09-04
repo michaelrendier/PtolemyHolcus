@@ -43,11 +43,13 @@
  *   -b [dir]   write PPM bitmap paper (field — 16 scalar amplitudes)
  *   -H [dir]   write HTML paper (SVG + bitmap + text shadow, all together)
  *   -i <file>  read image as prompt (via ImageMagick — geometry-first OCR)
- *   -w         launch the RotaryBoxKiteMonad curses window (2026-08-25
- *   --boxkite  session): WordNet-composter + sedenion box-kite algebra,
- *              Eye reads / Hands writes-and-renders, direction inference,
- *              template sentence assembly. Same brain-exec's-the-face
- *              pattern as -g/--gui, different Monad underneath.
+ *   -w         fork the PtolemyDesktop tabbed curses console (Chat /
+ *   --boxkite  ValaQuenta / Generational Lineage / Archimedes — unfinished
+ *   --console  tabs greyed) onto the tty and stay resident as the speaking
+ *              monad behind monad_harness.c: the console draws curses, this
+ *              process answers `say` frames with the sedenion-projection
+ *              word shadow. `/paragraph` in the Chat Tab flips the console to
+ *              paragraph grammar; the default is sentence construction.
  *
  * Papers are written to dir (default: current directory).
  * Filename: ptol_<prompt_slug>_<timestamp>.{svg,ppm,html}
@@ -77,10 +79,14 @@
 #include <ctype.h>
 #include <stdint.h>
 #include <fcntl.h>
+#include <signal.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
+#include <sys/socket.h>
+#include <sys/wait.h>
 #include "ptolemy.h"
-#include "monad3c.h"    /* the three language centers, one mmap-able file */
+#include "monad3c.h"        /* the three language centers, one mmap-able file */
+#include "monad_harness.h"  /* the frame seam to the Python tabbed curses UI  */
 
 /* Directory containing the ptol binary (and ptol_layer.py). Set in main(). */
 static char g_ptol_dir[512] = ".";
@@ -788,6 +794,162 @@ static int read_image_scalars(const char *img_path, double *v_out)
     return 1;
 }
 
+/* ── ptol -w : the resident speaking monad behind the tabbed curses UI ──────
+ *
+ * console_speak() is the sentence-mode voice: project the prompt onto the 16
+ * sedenion shells at Eye H (σ=½), threshold at peak/φ, walk the active shells
+ * in spiral order (ZD → great circle) and hand back that word shadow plus the
+ * measured (σ_self, Γ) and the firing primes. The Python Chat Tab renders it;
+ * `/paragraph` there layers semantic_paragraph.py's paragraph grammar on top.
+ *
+ * run_console() forks ptolemy_console.py onto the tty (it draws curses) and
+ * keeps this process on the other end of a socketpair, answering `say`/`cmd`/
+ * `mode`/`ping` frames through monad_harness.c until the console quits.
+ */
+#ifndef PTOL_LIBRARY
+static void console_speak(const char *prompt, char out[1024],
+                          double *sig_out, double *gam_out, char primes[128])
+{
+    out[0] = '\0';
+    primes[0] = '\0';
+    if (sig_out) *sig_out = 0.5;
+    if (gam_out) *gam_out = 0.0;
+
+    int n = (int)strlen(prompt);
+    if (n <= 0) { strncpy(out, "(empty prompt)", 1024); return; }
+
+    double v[16], norm = 0.0, peak = 0.0;
+    for (int k = 0; k < 16; k++) {
+        _x[k]  = project((const unsigned char *)prompt, n, k, 0.5); /* Eye H */
+        norm  += _x[k] * _x[k];
+        if (fabs(_x[k]) > peak) peak = fabs(_x[k]);
+    }
+    norm = sqrt(norm);
+    for (int k = 0; k < 16; k++) v[k] = (norm > 0.0) ? _x[k] / norm : 0.0;
+
+    double thresh      = peak / MONAD_PHI;
+    double thresh_norm = (norm > 0.0) ? thresh / norm : 0.0;
+
+    int idx[16];
+    for (int k = 0; k < 16; k++) idx[k] = k;
+    qsort(idx, 16, sizeof(int), cmp_mag_asc);
+
+    char words[16][256], elem[64];
+    memset(words, 0, sizeof(words));
+    get_monad_words(v, _x, thresh, words, elem);
+
+    size_t o = 0;
+    for (int i = 0; i < 16; i++) {
+        int k = idx[i];
+        if (fabs(v[k]) < thresh_norm || !words[k][0]) continue;
+        int wr = snprintf(out + o, 1024 - o, "%s%s", o ? " " : "", words[k]);
+        if (wr < 0 || (size_t)wr >= 1024 - o) break;
+        o += (size_t)wr;
+    }
+    if (o == 0) strncpy(out, "(no words fired)", 1024);
+
+    double gam, u;
+    measure_gamma(v, &gam, &u);
+    if (sig_out) *sig_out = measure_sigma(v);
+    if (gam_out) *gam_out = gam;
+
+    size_t po = 0;
+    for (int k = 0; k < 16; k++)
+        if (fabs(_x[k]) >= thresh) {
+            int wr = snprintf(primes + po, 128 - po, "%s%d", po ? " " : "", P[k]);
+            if (wr < 0 || (size_t)wr >= 128 - po) break;
+            po += (size_t)wr;
+        }
+}
+
+static int run_console(int argc, char *argv[], int argstart)
+{
+    (void)argc; (void)argv; (void)argstart;
+
+    char console_py[600], venv_py[600];
+    snprintf(console_py, sizeof console_py,
+             "%s/../../PtolemyDesktop/ptolemy_console.py", g_ptol_dir);
+    snprintf(venv_py, sizeof venv_py,
+             "%s/../../PtolemyDesktop/.venv/bin/python3", g_ptol_dir);
+    if (access(venv_py, X_OK) != 0)
+        snprintf(venv_py, sizeof venv_py, "/usr/bin/python3");
+    if (access(console_py, R_OK) != 0) {
+        fprintf(stderr, "ptol -w: console not found: %s\n", console_py);
+        return 1;
+    }
+
+    int sv[2];
+    if (socketpair(AF_UNIX, SOCK_STREAM, 0, sv) != 0) {
+        perror("ptol -w: socketpair");
+        return 1;
+    }
+
+    pid_t pid = fork();
+    if (pid < 0) { perror("ptol -w: fork"); return 1; }
+
+    if (pid == 0) {
+        /* child: console keeps the tty (curses); frame link is fd 3 */
+        close(sv[0]);
+        if (sv[1] != 3) { dup2(sv[1], 3); close(sv[1]); }
+        setenv("PTOL_HARNESS_FD", "3", 1);
+        char *py_argv[8];
+        int na = 0;
+        py_argv[na++] = venv_py;
+        py_argv[na++] = console_py;
+        py_argv[na++] = (char *)"--harness";
+        py_argv[na++] = (char *)"3";
+        py_argv[na]   = NULL;
+        execv(venv_py, py_argv);
+        perror("ptol -w: exec ptolemy_console.py failed");
+        _exit(127);
+    }
+
+    /* parent: resident monad — answer frames until the console goes away */
+    close(sv[1]);
+    signal(SIGPIPE, SIG_IGN);
+    mh_harness *h = mh_open(sv[0], sv[0]);
+    if (!h) { close(sv[0]); return 1; }
+
+    char mode[16] = "sentence";
+    for (;;) {
+        mh_frame fr;
+        int g = mh_recv(h, &fr, -1);
+        if (g < 0) break;
+        if (g == 0) continue;
+
+        if (strcmp(fr.t, "say") == 0 || strcmp(fr.t, "cmd") == 0) {
+            char reply[1024], primes[128];
+            double sig, gam;
+            console_speak(fr.text, reply, &sig, &gam, primes);
+            mh_send_chat(h, fr.id, reply, sig, gam, primes, mode);
+        } else if (strcmp(fr.t, "mode") == 0) {
+            if (fr.mode[0]) {
+                strncpy(mode, fr.mode, sizeof mode - 1);
+                mode[sizeof mode - 1] = '\0';
+            }
+            char ack[64];
+            snprintf(ack, sizeof ack, "(construction mode: %s)", mode);
+            mh_send_chat(h, fr.id, ack, 0.5, 0.0, "", mode);
+        } else if (strcmp(fr.t, "ping") == 0) {
+            char pong[64];
+            snprintf(pong, sizeof pong, "{\"t\":\"pong\",\"id\":%ld}", fr.id);
+            mh_send_raw(h, pong);
+        } else if (strcmp(fr.t, "attach") == 0) {
+            mh_send_chat(h, fr.id, "(ptol resident monad attached)",
+                         0.5, 0.0, "", mode);
+        } else if (strcmp(fr.t, "quit") == 0) {
+            break;
+        }
+    }
+
+    mh_close(h);
+    close(sv[0]);
+    int st = 0;
+    waitpid(pid, &st, 0);
+    return WIFEXITED(st) ? WEXITSTATUS(st) : 1;
+}
+#endif /* PTOL_LIBRARY */
+
 /* ── Main ────────────────────────────────────────────────────────────────── */
 /*
  * Compile as CLI binary (default):
@@ -890,47 +1052,20 @@ int main(int argc, char *argv[])
             execv("/usr/bin/python3", py_argv);
             perror("ptol -g: exec holcus_window.py failed");
             return 127;
-        } else if (strcmp(argv[arg0], "-w") == 0 || strcmp(argv[arg0], "--boxkite") == 0) {
-            /* Launch rotary_boxkite_window.py — the 2026-08-25 session's
-             * Monad (WordNet box-kite composter + sedenion box-kite algebra,
-             * Eye-reads/Hands-writes-and-renders, direction inference,
-             * template sentence assembly) behind the same pre-harness
-             * curses chrome as -g/--gui. Same exec pattern, same brain-
-             * exec's-the-face contract — this is NOT a rewrite of -g, it
-             * points at a different, newer Python window because the
-             * underlying Monad it drives is different (RotaryBoxKiteMonad,
-             * not monad.py's Engine). A from-scratch pure-C port of the
-             * WordNet-relational composter and the box-kite algebra is
-             * real future work, not done here — see PtolC/wntest.c for a
-             * verified proof that wordnet-dev's C API (findtheinfo_ds /
-             * read_synset / ptrtyp[]) reproduces wordnet_boxkite.py's
-             * context_vector exactly (checked against bank.n.01: HYPERPTR=1,
-             * HYPOPTR=2, matching {'hypernyms':1,'hyponyms':2}) — the
-             * groundwork for that future port, not the port itself. */
-            char gui[512];
-            snprintf(gui, sizeof(gui), "%s/../rotary_boxkite_window.py", g_ptol_dir);
-            /* RotaryBoxKiteMonad needs nltk+wordnet. /usr/bin/python3's
-             * site-packages has a broken numpy/pandas/sklearn ABI
-             * (pandas._libs compiled against a different numpy than what's
-             * installed) that nltk's import chain drags in via
-             * chunk->tag->classify->scikitlearn->sklearn->pandas — confirmed
-             * 2026-08-25, a real crash, not this program's bug. The
-             * ValaQuenta venv has been the clean, verified interpreter for
-             * every wordnet_boxkite.py/sentence_context.py run all session;
-             * use it here explicitly rather than relying on system python3. */
-            char venv_py[512];
-            snprintf(venv_py, sizeof(venv_py),
-                    "%s/../../ValaQuenta/.venv/bin/python3", g_ptol_dir);
-            char *py_argv[64];
-            py_argv[0] = venv_py;
-            py_argv[1] = gui;
-            int na = 2;
-            for (int i = arg0 + 1; i < argc && na < 63; i++)
-                py_argv[na++] = argv[i];
-            py_argv[na] = NULL;
-            execv(venv_py, py_argv);
-            perror("ptol -w: exec rotary_boxkite_window.py failed (venv python)");
-            return 127;
+        } else if (strcmp(argv[arg0], "-w") == 0 || strcmp(argv[arg0], "--boxkite") == 0 ||
+                   strcmp(argv[arg0], "--console") == 0) {
+            /* Fork the PtolemyDesktop tabbed curses console onto the tty and
+             * stay resident as the speaking monad behind monad_harness.c.
+             * The console draws curses (Chat / ValaQuenta / Generational
+             * Lineage / Archimedes — the last two greyed until built); this
+             * process answers `say` frames with the sedenion-projection word
+             * shadow (console_speak). `/paragraph` in the Chat Tab flips the
+             * console to paragraph grammar (semantic_paragraph.py); the
+             * default stays sentence construction. Replaces the old exec of
+             * rotary_boxkite_window.py — kept in git history; a from-scratch
+             * C port of the WordNet box-kite composter is still future work
+             * (see PtolC/wntest.c for the verified wordnet-dev groundwork). */
+            return run_console(argc, argv, arg0 + 1);
         } else {
             break;
         }

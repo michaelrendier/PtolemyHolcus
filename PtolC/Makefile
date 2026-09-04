@@ -24,8 +24,12 @@ PTOLEMY_HOME ?= $(HOME)/.ptolemy
 
 all: $(TARGET) ptol
 
-ptol: ptol.c ptolemy.h
-	$(CC) $(CFLAGS) -o ptol ptol.c $(LDFLAGS)
+ptol: ptol.c ptolemy.h monad_harness.c monad_harness.h
+	$(CC) $(CFLAGS) -o ptol ptol.c monad_harness.c $(LDFLAGS)
+
+# monad_harness standalone self-test (support-line parser + frame round-trip)
+mh_test: monad_harness.c monad_harness.h
+	$(CC) $(CFLAGS) -DMH_SELFTEST -o mh_test monad_harness.c
 
 # ── Box-kite snapshot dataset — real WordNet C API (wordnet-dev), not the
 # NLTK corpus dump above. See boxkite_bin.h for the shared struct shape
