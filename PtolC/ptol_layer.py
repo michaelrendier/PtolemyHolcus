@@ -182,12 +182,31 @@ def geometry_stdin():
     lines = sys.stdin.read().strip().split('\n')
     return _parse_raw(lines)
 
+# ── corpus hygiene ──────────────────────────────────────────────────────────
+# The holcus_monad_{mathematics,physics}.bin pickles carry un-sanitised LaTeX
+# ("f_{1}(s)\\,f_{2}(t"), arXiv bibcodes ("1986phrva..34.5080f"), DOIs and the
+# odd run of mojibake. english.bin is far cleaner but still has OCR crud. Drop
+# a token that is clearly not an English word so the spoken shadow stays legible
+# (the real fix is routing `ptol -w` through the box-kite assembler, not this).
+_JUNK_RE = re.compile(r'[\\{}$^~|_.]|--|\d{3,}|^[^A-Za-z]|[^A-Za-z]$|[^\x00-\x7f]')
+
+def _clean_word(w):
+    if not w:
+        return ''
+    if _JUNK_RE.search(w):
+        return ''
+    letters = sum(c.isalpha() for c in w)
+    if letters < 3 or letters / len(w) < 0.75:
+        return ''
+    return w
+
+
 # ── Path assembly: cursive — continuous path with halts ──────────────────────
 
 def words_by_dimension(scalars, layer):
     """16 words, one per dimension k=0..15 (not spiral order)."""
     data = load(layer)
-    return [word_at(data, scalars[k]) or '' for k in range(16)]
+    return [_clean_word(word_at(data, scalars[k])) for k in range(16)]
 
 def assemble_path(scalars, layer):
     """
@@ -264,7 +283,13 @@ if __name__ == '__main__':
             scalars, primes, s_rb = geometry(' '.join(args))
         else:
             sys.exit(1)
-        layer = forced_layer or select_layer(' '.join(args) if args else '', scalars, s_rb)
+        # --words-only feeds the spoken shadow (ptol -w). select_layer() is
+        # currently landing on physics/mathematics for plain English prompts
+        # and those bins are the dirty ones — pin english here until the layer
+        # picker is retuned / the box-kite assembler takes this path.
+        layer = forced_layer or ('english' if 'english' in LAYERS
+                                 else select_layer(' '.join(args) if args else '',
+                                                   scalars, s_rb))
         # Line 0: layer element name (the monad that fired)
         # Lines 1-16: one word per dimension
         print(layer_element(layer))
