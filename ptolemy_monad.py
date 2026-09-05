@@ -87,6 +87,18 @@ DIRECTION_BY_DOMINANT_RELATION: Dict[str, str] = {
 }
 
 
+# hyponyms/hypernyms measure taxonomy BRANCHING, not what the sentence is
+# ABOUT — nearly every noun has WordNet subtypes, so raw-count argmax over
+# the full 19-dim root almost always lands here (measured 2026-09-04: 9/10
+# varied test sentences came back 'enumerate'). context_hash_v2.code_omega()
+# and semantic_paragraph's grammar already exclude this same channel for the
+# same reason; infer_direction did not. Prefer the richer, rarer signal —
+# causes/similar_tos/topic_domains/etc — when one fired at all; branching
+# stays the FALLBACK direction, not the default one.
+_BRANCHING = frozenset({'hypernyms', 'instance_hypernyms',
+                        'hyponyms', 'instance_hyponyms'})
+
+
 def infer_direction(root_vector: List[int]) -> str:
     """The dominant nonzero dimension of the sentence root picks the
     direction. No dominant signal (all-zero root — an input with no
@@ -94,7 +106,12 @@ def infer_direction(root_vector: List[int]) -> str:
     direction, just an uncommitted one."""
     if not any(root_vector):
         return 'observe'
-    idx = max(range(len(root_vector)), key=lambda i: root_vector[i])
+    non_branch = [(i, c) for i, c in enumerate(root_vector)
+                  if c and RELATION_METHODS[i] not in _BRANCHING]
+    if non_branch:
+        idx = max(non_branch, key=lambda ic: ic[1])[0]
+    else:
+        idx = max(range(len(root_vector)), key=lambda i: root_vector[i])
     return DIRECTION_BY_DOMINANT_RELATION.get(RELATION_METHODS[idx], 'observe')
 
 
