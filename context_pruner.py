@@ -24,6 +24,7 @@ and in two-step products -- a curved 2-patch of the sphere's own moves.
 """
 from __future__ import annotations
 
+import math
 import numpy as np
 
 import sys
@@ -33,58 +34,129 @@ from ValaQuenta.modules.box_kite.maths import multiply as _sed_mul  # real S pro
 
 DIM = 16
 
+# ── PERFORMANCE (2026-09-04, Cody: "25-35 seconds to return a response") ────
+# prune() does an O(n^2) pairwise coherent() sweep, and each coherent() call
+# grids up to 15*24*15*24 = 129,600 perspective() evaluations (the two-step
+# curved patch). Profiled: for an 8-vector pool (28 pairs) that's ~2.9M
+# perspective()/_unit() calls -- first found ALL going through numpy on
+# 16-element vectors (np.linalg.norm's generic dispatcher costs far more than
+# the 16-float arithmetic it wraps: 83s for one process_input() call). A
+# plain-Python pass on the hot loop got that to ~40s -- still all Python
+# interpreter overhead, one grid point at a time.
+#
+# The actual fix: perspective(u, x) = u . x is LINEAR IN u for fixed x (CD
+# multiplication is bilinear), so "perspective at every grid point" is one
+# matrix multiply, not a Python loop. _right_mult_matrix(x) builds the 16x16
+# matrix R_x with R_x @ u == perspective(u, x) for ANY u (column i = e_i . x);
+# _grid_u() builds the whole angle grid as one (n, 16) array; one
+# `U @ R_x.T` + one vectorised norm replaces the per-point loop. Two-step
+# still needs a fresh R_aj per intermediate aj (~360 of those, each 16 cheap
+# pure-Python sedenion multiplies), but each aj's inner sweep is again one
+# matmul instead of 360 Python-level calls: 129,600 calls -> ~361 matmuls.
+# Verdicts/residuals verified identical (to float precision) against the
+# plain-Python and original-numpy versions in this file's __main__.
+
+def _norm(v):
+    return math.sqrt(sum(c * c for c in v))
+
+
+def _dist(a, b):
+    return math.sqrt(sum((x - y) * (x - y) for x, y in zip(a, b)))
+
 
 def sed_exp(t, k):
     """The unit sedenion exp(t e_k) = cos t . e_0 + sin t . e_k  (e_k^2=-1)."""
     u = [0.0] * DIM
-    u[0] = float(np.cos(t))
-    u[k] = float(np.sin(t))
+    u[0] = math.cos(t)
+    u[k] = math.sin(t)
     return u
 
 
 def perspective(u, x):
     """A curved perspective shift: x -> u . x  (left sedenion product).
     NOT a rotation -- |u.x| != |x| in general."""
-    return np.asarray(_sed_mul(list(map(float, u)), list(map(float, x))), float)
+    return _sed_mul([float(c) for c in u], [float(c) for c in x])
 
 
 def _unit(v):
-    n = np.linalg.norm(v)
-    return v / n if n else v
+    n = _norm(v)
+    return [c / n for c in v] if n else list(v)
+
+
+def _right_mult_matrix(x):
+    """16x16 matrix R with R @ u == perspective(u, x) == u . x, for ANY u.
+    CD multiplication is bilinear, so right-multiplication-by-x is linear in
+    the left argument: column i is e_i . x."""
+    R = np.empty((DIM, DIM))
+    e = [0.0] * DIM
+    for i in range(DIM):
+        e[i] = 1.0
+        R[:, i] = _sed_mul(e, x)
+        e[i] = 0.0
+    return R
+
+
+def _grid_u(ts):
+    """The whole (k, t) angle grid for k in 1..15 as one (15*len(ts), 16)
+    array, row r = sed_exp(t, k) — plus the parallel (k, t) each row is."""
+    n = (DIM - 1) * len(ts)
+    U = np.zeros((n, DIM))
+    meta = [None] * n
+    r = 0
+    for k in range(1, DIM):
+        for t in ts:
+            U[r, 0] = math.cos(t)
+            U[r, k] = math.sin(t)
+            meta[r] = (k, t)
+            r += 1
+    return U, meta
+
+
+def _best_in_grid(U, meta, R, b_arr, digits):
+    """perspective(every grid row, x) in one matmul, unit-normalised, then
+    distance to b — vectorised. Returns (residual, (label, angle))."""
+    P = U @ R.T
+    n = np.linalg.norm(P, axis=1, keepdims=True)
+    n[n == 0.0] = 1.0
+    d = np.linalg.norm(P / n - b_arr, axis=1)
+    i = int(np.argmin(d))
+    k, t = meta[i]
+    return float(d[i]), (f'e{k}', round(t, digits))
 
 
 def coherent(a, b, tol=0.06, nsteps=180, two_step=True):
     """Verdict + evidence. Is there a unit-sedenion perspective carrying
     direction(a) onto direction(b)?  a, b: length-16."""
-    a = _unit(np.asarray(a, float)); b = _unit(np.asarray(b, float))
-    ts = np.linspace(0.0, 2 * np.pi, nsteps, endpoint=False)
+    a = _unit([float(c) for c in a]); b = _unit([float(c) for c in b])
+    b_arr = np.asarray(b)
+    ts = [2.0 * math.pi * i / nsteps for i in range(nsteps)]
 
-    best = {'residual': 2.0, 'move': None}
-    # one curved great circle at a time
-    for k in range(1, DIM):
-        for t in ts:
-            r = np.linalg.norm(_unit(perspective(sed_exp(t, k), a)) - b)
-            if r < best['residual']:
-                best = {'residual': float(r), 'move': (f'e{k}', round(float(t), 3))}
-    # two-step curved patch (coarser grid)
+    Ra = _right_mult_matrix(a)
+    U, meta = _grid_u(ts)
+    r0, move0 = _best_in_grid(U, meta, Ra, b_arr, 3)
+    best = {'residual': r0, 'move': move0}
+
+    # two-step curved patch (coarser grid): every intermediate aj in one
+    # batched sweep, then one matmul-sweep per aj for the second step
     if two_step and best['residual'] >= tol:
-        ts2 = np.linspace(0.0, 2 * np.pi, 24, endpoint=False)
-        for j in range(1, DIM):
-            for tj in ts2:
-                aj = _unit(perspective(sed_exp(tj, j), a))
-                for k in range(1, DIM):
-                    for tk in ts2:
-                        r = np.linalg.norm(
-                            _unit(perspective(sed_exp(tk, k), aj)) - b)
-                        if r < best['residual']:
-                            best = {'residual': float(r),
-                                    'move': (f'e{j}', round(float(tj), 2),
-                                             f'e{k}', round(float(tk), 2))}
+        ts2 = [2.0 * math.pi * i / 24 for i in range(24)]
+        U2, meta2 = _grid_u(ts2)                    # reused for both steps
+        AJ = U2 @ Ra.T
+        n1 = np.linalg.norm(AJ, axis=1, keepdims=True)
+        n1[n1 == 0.0] = 1.0
+        AJ /= n1                                     # unit aj's, batched
+
+        for row in range(AJ.shape[0]):
+            Raj = _right_mult_matrix(AJ[row])
+            r, (klabel, tk) = _best_in_grid(U2, meta2, Raj, b_arr, 2)
+            if r < best['residual']:
+                j, tj = meta2[row]
+                best = {'residual': r,
+                        'move': (f'e{j}', round(tj, 2), klabel, tk)}
         # cheap early accept can miss; that's why AMBIGUOUS exists
 
-    inv_gap = float(np.linalg.norm(np.sort(np.abs(a)) - np.sort(np.abs(b))))
-    gain_gap = abs(np.linalg.norm(perspective(a, a))
-                   - np.linalg.norm(perspective(b, b)))
+    inv_gap = _dist(sorted(abs(x) for x in a), sorted(abs(x) for x in b))
+    gain_gap = abs(_norm(perspective(a, a)) - _norm(perspective(b, b)))
 
     if best['residual'] < tol:
         verdict = 'SAME'
