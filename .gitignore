@@ -71,3 +71,6 @@ sizecheck
 # the shell binary — build with: cc -O2 -std=c99 -o ptol ptol_shell.c -lm
 PtolC/ptol
 PtolC/ptol_asan
+
+# External grammar corpora — provenance tracked via datasets/README.md + fetch.sh
+datasets/*/
